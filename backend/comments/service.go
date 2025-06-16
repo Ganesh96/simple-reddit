@@ -1,284 +1,101 @@
 package comments
 
 import (
+	"context"
 	"net/http"
+	"time"
 
-	"simple-reddit/common"
-	"simple-reddit/configs"
-
+	"github.com/ganesh96/simple-reddit/backend/common"
+	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const COMMENTS_ROUTE_PREFIX = "/comment"
+var commentCollection *mongo.Collection = configs.GetCollection(configs.DB, "comments")
 
-const CommentsCollectionName string = "comments"
-const CommentsVotingHistoryCollectionName string = "comments_voting_history"
-
-var CommentsCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, CommentsCollectionName)
-var CommentsVotingHistoryCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, CommentsVotingHistoryCollectionName)
-var validate = validator.New()
-
+// CreateComment handles the creation of a new comment.
 func CreateComment() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var commentReq CreateCommentRequest
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var comment Comment
+		defer cancel()
 
-		// validate the request body
-		if err := c.BindJSON(&commentReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+		if err := c.BindJSON(&comment); err != nil {
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
 			return
 		}
 
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&commentReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
+		newComment := Comment{
+			Id:        primitive.NewObjectID(),
+			Text:      comment.Text,
+			PostId:    comment.PostId,
+			CreatedBy: comment.CreatedBy,
 		}
 
-		// Check whether Parent Comment exists or is deleted.
-		if commentReq.ParentId != "" {
-			parentComment, err := retrieveCommentById(commentReq.ParentId)
-			if err != nil {
-				c.JSON(
-					http.StatusNotFound,
-					common.APIResponse{
-						Status:  http.StatusNotFound,
-						Message: common.API_FAILURE,
-						Data:    map[string]interface{}{"error": err.Error(), "message": "parent comment not found"}},
-				)
-				return
-			} else if parentComment.IsDeleted {
-				c.JSON(
-					http.StatusOK,
-					common.APIResponse{
-						Status:  http.StatusOK,
-						Message: common.API_FAILURE,
-						Data:    map[string]interface{}{"error": common.ERR_PARENT_COMMENT_IS_DELETED.Message}},
-				)
-				return
-			}
-		}
-
-		// Create comment in database
-		result, err := createCommentInDB(commentReq)
+		result, err := commentCollection.InsertOne(ctx, newComment)
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
-
-		c.JSON(
-			http.StatusCreated,
-			common.APIResponse{
-				Status:  http.StatusCreated,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"created": result}},
-		)
+		common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"comment": result})
 	}
 }
 
+// GetCommentsForPost retrieves all comments associated with a specific post.
+func GetCommentsForPost() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		postId := c.Param("postid")
+		var comments []Comment
+
+		cursor, err := commentCollection.Find(ctx, bson.M{"postid": postId})
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+		defer cursor.Close(ctx)
+
+		if err = cursor.All(ctx, &comments); err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+
+		if comments == nil {
+			comments = []Comment{}
+		}
+
+		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"comments": comments})
+	}
+}
+
+// DeleteComment deletes a comment by its ID.
 func DeleteComment() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var delCommentReq DeleteCommentRequest
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-		// validate the request body
-		if err := c.BindJSON(&delCommentReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&delCommentReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		result, err := deleteComment(delCommentReq)
-		if err == mongo.ErrNoDocuments {
-			c.JSON(
-				http.StatusNotFound,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"deleted": result}},
-		)
-	}
-}
-
-func VoteComment() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var cVoteReq CommentVoteRequest
-
-		// validate the request body
-		if err := c.BindJSON(&cVoteReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&cVoteReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		result, err := updateVote(cVoteReq)
+		commentId := c.Param("id")
+		objId, err := primitive.ObjectIDFromHex(commentId)
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusBadRequest, "Invalid comment ID", gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"result": result}},
-		)
+		result, err := commentCollection.DeleteOne(ctx, bson.M{"_id": objId})
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+
+		if result.DeletedCount < 1 {
+			common.RespondWithJSON(c, http.StatusNotFound, "Comment with specified ID not found!", gin.H{})
+			return
+		}
+
+		c.Status(http.StatusNoContent)
 	}
-}
-
-func GetComments() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var commentReq GetCommentRequest
-
-		if err := c.BindQuery(&commentReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&commentReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		comments, err := retrieveAllCommentsOfPost(commentReq.PostId)
-		if err == mongo.ErrNoDocuments {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": common.ERR_COMMENTS_NOT_FOUND.Message}},
-			)
-			return
-		} else if err == primitive.ErrInvalidHex {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"comments": comments}},
-		)
-	}
-}
-
-const COMMENTS_ROUTE_VOTE string = COMMENTS_ROUTE_PREFIX + "/vote"
-const COMMENTS_ROUTE_CREATE string = COMMENTS_ROUTE_PREFIX
-const COMMENTS_ROUTE_GET string = COMMENTS_ROUTE_PREFIX
-const COMMENTS_ROUTE_DELETE string = COMMENTS_ROUTE_PREFIX
-
-func Routes(router *gin.Engine) {
-	router.POST(COMMENTS_ROUTE_CREATE, CreateComment())
-	router.GET(COMMENTS_ROUTE_GET, GetComments())
-	router.POST(COMMENTS_ROUTE_VOTE, VoteComment())
-	router.POST(COMMENTS_ROUTE_DELETE+"/delete", DeleteComment()) // changed to POST method temporarily
 }
