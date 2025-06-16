@@ -2,615 +2,194 @@ package posts
 
 import (
 	"context"
-	"log"
 	"net/http"
-	"simple-reddit/common"
-	"simple-reddit/configs"
-	"simple-reddit/users"
 	"time"
 
+	"github.com/ganesh96/simple-reddit/backend/common"
+	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const POST_ROUTE_PREFIX = "/post"
-const HOME_ROUTE_PREFIX = "/home"
+// postCollection is a package-level variable to interact with the "posts" collection in MongoDB.
+var postCollection *mongo.Collection = configs.GetCollection(configs.DB, "posts")
 
-const PostsCollectionName string = "posts"
-const PostsVotingHistoryCollectionName string = "posts_voting_history"
-
-var PostsCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, PostsCollectionName)
-var PostsVotingHistoryCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, PostsVotingHistoryCollectionName)
-
-var validate = validator.New()
-
+// CreatePost handles the creation of a new post.
+// It expects a JSON payload with post details and saves it to the database.
 func CreatePost() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var post CreatePostRequest
+		// Set up a context with a timeout to prevent long-running database operations.
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		var post Post
+
+		// Bind the incoming JSON payload to the Post struct.
+		// If binding fails, return a 400 Bad Request error.
 		if err := c.BindJSON(&post); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
 			return
 		}
-		if validationErr := validate.Struct(&post); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
+
+		// Create a new Post instance with a new unique ObjectID.
+		newPost := Post{
+			Post_id:   primitive.NewObjectID(),
+			Title:     post.Title,
+			Text:      post.Text,
+			Community: post.Community,
+			Username:  post.Username,
+			// Other fields like votes, created_at can be initialized here.
 		}
-		result, err := createPostInDB(post)
+
+		// Insert the new post into the database.
+		result, err := postCollection.InsertOne(ctx, newPost)
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(
-			http.StatusCreated,
-			common.APIResponse{
-				Status:  http.StatusCreated,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"data": result}},
-		)
-
+		// On successful creation, return a 201 Created status with the new post's ID.
+		common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"post": result})
 	}
 }
 
+// GetAllPosts retrieves all posts from the database.
+func GetAllPosts() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		var posts []Post
+
+		// Find all documents in the posts collection.
+		cursor, err := postCollection.Find(ctx, bson.M{})
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+		defer cursor.Close(ctx)
+
+		// Iterate through the cursor and decode each document into a Post struct.
+		if err = cursor.All(ctx, &posts); err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+
+		// If no posts are found, return an empty array instead of null.
+		if posts == nil {
+			posts = []Post{}
+		}
+
+		// Return a 200 OK status with the list of posts.
+		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"posts": posts})
+	}
+}
+
+// GetPostById retrieves a single post by its ID.
+func GetPostById() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		var post Post
+		// Get the post ID from the URL parameter.
+		postId := c.Param("id")
+
+		// Convert the string ID to a MongoDB ObjectID.
+		objId, err := primitive.ObjectIDFromHex(postId)
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_POST_ID, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Find the post by its ID.
+		err = postCollection.FindOne(ctx, bson.M{"post_id": objId}).Decode(&post)
+		if err != nil {
+			// If the post is not found, return a 404 Not Found error.
+			if err == mongo.ErrNoDocuments {
+				common.RespondWithJSON(c, http.StatusNotFound, common.POST_NOT_FOUND, gin.H{"error": err.Error()})
+				return
+			}
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Return a 200 OK status with the post data.
+		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"post": post})
+	}
+}
+
+// UpdatePost updates an existing post's text.
+func UpdatePost() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		var post Post
+		postId := c.Param("id")
+		objId, err := primitive.ObjectIDFromHex(postId)
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_POST_ID, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Bind the incoming JSON to the Post struct.
+		if err := c.BindJSON(&post); err != nil {
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Create an update query to set the new text.
+		update := bson.M{"$set": bson.M{"text": post.Text}}
+
+		// Find the post and update it.
+		result, err := postCollection.UpdateOne(ctx, bson.M{"post_id": objId}, update)
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+
+		// If no document was modified, it means the post was not found.
+		if result.ModifiedCount == 0 {
+			common.RespondWithJSON(c, http.StatusNotFound, common.POST_NOT_FOUND, gin.H{})
+			return
+		}
+
+		// Return a 200 OK status on successful update.
+		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"modifiedCount": result.ModifiedCount})
+	}
+}
+
+// DeletePost deletes a post by its ID.
 func DeletePost() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var delPostReq DeletePostRequest
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
 
-		// validate the request body
-		if err := c.BindJSON(&delPostReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&delPostReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		// TODO: add check whether correct user is deleting the community after adding JWT verification.
-		user, err := users.GetUserDetails(delPostReq.UserName)
-		// TODO: replace this check with a check against username within claims of JWT token.
-		if user.Username != delPostReq.UserName {
-			c.JSON(
-				http.StatusUnauthorized,
-				common.APIResponse{
-					Status:  http.StatusUnauthorized,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		result, err := deletePost(delPostReq)
+		postId := c.Param("id")
+		objId, err := primitive.ObjectIDFromHex(postId)
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_POST_ID, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"deleted": result}},
-		)
-	}
-}
-
-func GetPosts() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var postReq GetPostRequest
-		// validate the request body
-		if err := c.BindJSON(&postReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&postReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-		postDetails, err := retrievePostDetails(postReq)
-		if err == mongo.ErrNoDocuments {
-			c.JSON(
-				http.StatusNotFound,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		if len(postDetails) > 0 {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_SUCCESS,
-					Data:    map[string]interface{}{"posts": postDetails}},
-			)
-			return
-		} else {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_SUCCESS,
-					Data:    map[string]interface{}{"posts": postDetails}},
-			)
-			return
-		}
-	}
-}
-
-func GetFeed() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var feedReq GetFeedRequest
-
-		// validate the request body
-		if err := c.BindJSON(&feedReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&feedReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		postDetails, postCount, err := retrieveFeedDetails(feedReq) // retrieveAllPostDetails()
-		if err == mongo.ErrNoDocuments {
-			c.JSON(
-				http.StatusNotFound,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		if len(postDetails) > 0 {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_SUCCESS,
-					Data:    map[string]interface{}{"posts": postDetails, "Total Posts": postCount}},
-			)
-			return
-		} else {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_SUCCESS,
-					Data:    map[string]interface{}{"posts": postDetails}},
-			)
-			return
-		}
-	}
-}
-
-func EditPost() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var postReq EditPostRequest
-
-		// validate the request body
-		if err := c.BindJSON(&postReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&postReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-		result, err := editPostDetails(postReq)
+		// Delete the post from the collection.
+		result, err := postCollection.DeleteOne(ctx, bson.M{"post_id": objId})
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"updated": result}},
-		)
-	}
-}
-
-func Vote() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var voteReq VoteRequest
-
-		// validate the request body
-		if err := c.BindJSON(&voteReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&voteReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-		result, status, err := UpDownVotePosts(voteReq)
-		if err != nil {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error(), "vote_status": status}},
-			)
+		// If no document was deleted, the post was not found.
+		if result.DeletedCount == 0 {
+			common.RespondWithJSON(c, http.StatusNotFound, common.POST_NOT_FOUND, gin.H{})
 			return
 		}
 
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"updated": result, "vote_status": status}},
-		)
+		// Return a 204 No Content status on successful deletion.
+		// Note: A 204 response should not have a body.
+		c.Status(http.StatusNoContent)
 	}
-}
-
-func createPostInDB(post CreatePostRequest) (result *mongo.InsertOneResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	newPost := ConvertPostRequestToPostDBModel(post)
-	if err != nil {
-		return result, err
-	}
-	result, err = PostsCollection.InsertOne(ctx, newPost)
-	return result, err
-}
-
-func CheckPostExists(postReq DeletePostRequest) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var post PostDBModel
-	// filter := bson.M{"$and": []bson.M{{"username": postReq.UserName}, {"_id": postReq.ID}}}
-	filter := bson.D{primitive.E{Key: "_id", Value: postReq.ID}}
-	//cursor, err := postCollection.FindOne(ctx, filter)
-	err := PostsCollection.FindOne(ctx, filter).Decode(&post)
-	if err != nil {
-		return false, err
-	}
-	return true, err
-}
-
-func GetPostbyID(postReq DeletePostRequest) (PostDBModel, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var post PostDBModel
-	filter := bson.M{"$and": []bson.M{{"username": postReq.UserName}, {"_id": postReq.ID}}}
-	//cursor, err := postCollection.FindOne(ctx, filter)
-	err := PostsCollection.FindOne(ctx, filter).Decode(&post)
-	if err != nil {
-		return post, err
-	}
-	return post, err
-}
-
-func retrievePostDetails(postReq GetPostRequest) ([]PostResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var posts []PostDBModel
-	var postResp []PostResponse
-	filter := bson.M{"$and": []bson.M{{"username": postReq.UserName}, {"community_id": postReq.CommunityID}}} //bson.D{primitive.E{Key: "community_id", Value: postReq.CommunityID}, primitive.E{Key: "username", Value: postReq.UserName}}
-	cursor, _ := PostsCollection.Find(ctx, filter)
-	if err := cursor.All(ctx, &posts); err != nil {
-		return postResp, err
-	}
-	for _, post := range posts {
-		item, err := ConvertPostDBModelToPostResponse(post)
-		if err != nil {
-			return postResp, err
-		}
-		postResp = append(postResp, item)
-	}
-	return postResp, nil
-}
-
-func retrieveFeedDetails(feedReq GetFeedRequest) ([]PostResponse, int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var posts []PostDBModel
-	var postResp []PostResponse
-	feedFilter := bson.D{primitive.E{}}
-	postCount, err := PostsCollection.CountDocuments(ctx, feedFilter)
-	if err != nil {
-		return postResp, postCount, err
-	}
-	feedOptions := options.Find()
-	if feedReq.Mode == "latest" {
-		//fmt.Println("in feedReq.Mode == 'latest'")
-		feedOptions.SetSort(bson.M{"created_at": -1})
-	}
-	if feedReq.Mode == "hot" {
-		RankMostPosts()
-		feedOptions.SetSort(bson.M{"ranking": -1})
-	}
-	if feedReq.PageNumber > 0 {
-		//fmt.Println("in feedReq.PageNumber > 0")
-		feedOptions.SetSkip(int64((feedReq.PageNumber - 1) * feedReq.NumberOfPosts))
-	}
-	if feedReq.PageNumber < 1 {
-		//fmt.Println("in feedReq.PageNumber < 1")
-		feedOptions.SetSkip(0)
-	}
-	if feedReq.NumberOfPosts > 0 {
-		feedOptions.SetLimit(int64(feedReq.NumberOfPosts))
-	}
-	if feedReq.NumberOfPosts < 1 {
-		//fmt.Println("in feedReq.NumberOfPosts < 1")
-		feedOptions.SetLimit(10)
-	}
-	cursor, _ := PostsCollection.Find(ctx, feedFilter, feedOptions)
-	if err = cursor.All(ctx, &posts); err != nil {
-		return postResp, postCount, err
-	}
-	for _, post := range posts {
-		item, err := ConvertPostDBModelToPostResponse(post)
-		if err != nil {
-			return postResp, postCount, err
-		}
-		postResp = append(postResp, item)
-	}
-	return postResp, postCount, err
-}
-
-func deletePost(postReq DeletePostRequest) (*mongo.DeleteResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	//filter := bson.D{primitive.E{Key: "username", Value: postReq.UserName}}
-	filter := bson.M{"$and": []bson.M{{"username": postReq.UserName}, {"_id": postReq.ID}}}
-	result, err := PostsCollection.DeleteOne(ctx, filter)
-	return result, err
-}
-
-func editPostDetails(postReq EditPostRequest) (result *mongo.UpdateResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	// updating the data in db
-	delPostReq, err := ConvertEditPostReqToDeletePostReq(postReq)
-	postExists, err := CheckPostExists(delPostReq)
-	if !postExists {
-		return result, err
-	}
-	filter := bson.M{"$and": []bson.M{{"username": postReq.UserName}, {"_id": postReq.ID}}}
-	updateQuery := bson.D{
-		primitive.E{
-			Key: "$set",
-			Value: bson.D{
-				primitive.E{Key: "title", Value: postReq.Title},
-				primitive.E{Key: "body", Value: postReq.Body},
-			},
-		},
-	}
-	result, err = PostsCollection.UpdateOne(ctx, filter, updateQuery)
-	return result, err
-}
-
-// func RankPosts(feedReq GetFeedRequest) ([]PostResponse, error) {
-// 	// formula
-// 	// ranking = ( votes + comments / 3 ) / ( age_minutes + 120 )
-// 	Completed, err := RankMostPosts()
-
-// }
-
-func RankMostPosts() (result *mongo.UpdateResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var posts []PostDBModel
-	//var postResp []PostResponse
-	feedFilter := bson.D{primitive.E{}}
-	feedOptions := options.Find()
-	feedOptions.SetLimit(100)
-	feedOptions.SetSort(bson.M{"upvotes": -1})
-	cursor, err := PostsCollection.Find(ctx, feedFilter, feedOptions)
-	if err = cursor.All(ctx, &posts); err != nil {
-		return result, err
-	}
-	for _, post := range posts {
-		filter := bson.M{"$and": []bson.M{{"username": post.UserName}, {"_id": post.ID}}}
-		updateQuery := bson.D{
-			{"$set", bson.D{{"ranking", UpdatePostRanking(post)}}},
-		}
-		//post := UpdatePostRanking(post, rank)
-		//item, err := ConvertPostDBModelToPostResponse(post)
-		result, err = PostsCollection.UpdateOne(ctx, filter, updateQuery)
-		if err != nil {
-			return result, err
-		}
-	}
-	return result, err
-}
-
-func UpDownVotePosts(voteReq VoteRequest) (result *mongo.UpdateResult, vote_status string, err error) {
-	// updating the data in db
-	delPostReq, _ := ConvertVotePostReqToDeletePostReq(voteReq)
-	// log.Println(delPostReq)
-	postExists, err := CheckPostExists(delPostReq)
-	// log.Println("postExists", postExists, err)
-	if !postExists {
-		return result, "", err
-	}
-	postHist, err := retrievePostVoteHistForUser(voteReq.ID, voteReq.UserName)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return result, "voted", err
-	}
-	// log.Println("postHist", postHist, err)
-
-	var is_upvote bool = false
-	var is_remove_vote bool = false
-	if voteReq.Vote > 0 {
-		if postHist.ID == primitive.NilObjectID {
-			is_upvote = true
-		} else if postHist.IsUpvoted {
-			return result, "voted", nil
-		} else if postHist.IsDownvoted {
-			is_remove_vote = true
-			is_upvote = true
-		}
-	} else if voteReq.Vote < 0 {
-		if postHist.ID == primitive.NilObjectID {
-			is_upvote = false
-		} else if postHist.IsDownvoted {
-			return result, "voted", nil
-		} else if postHist.IsUpvoted {
-			is_remove_vote = true
-			is_upvote = false
-		}
-	}
-	result, err = updateVotePost(voteReq.ID, is_upvote, is_remove_vote)
-	log.Println("result", result, err)
-	if err != nil {
-		return result, "error", err
-	}
-
-	if is_remove_vote {
-		_, err := deletePostVoteHistForUser(voteReq.ID, voteReq.UserName)
-		// log.Println("del", err)
-		return result, "deleted", err
-	} else {
-		pVoteHist, err := ConvertPVRToPVHDBModel(voteReq)
-		// log.Println("pVoteHist", pVoteHist)
-		if err != nil {
-			return result, "error", err
-		}
-		_, err = createPostVoteHistInDB(pVoteHist)
-		// log.Println("createPostVoteHist", pVoteHist)
-		if err != nil {
-			return result, "error", err
-		}
-	}
-	return result, "voted", nil
-}
-
-func Routes(router *gin.Engine) {
-	router.POST(POST_ROUTE_PREFIX, CreatePost())
-	router.GET(POST_ROUTE_PREFIX, GetPosts())              // GET -> POST SP3
-	router.POST(HOME_ROUTE_PREFIX, GetFeed())              // maybe PATCH > POST
-	router.POST(POST_ROUTE_PREFIX+"/delete", DeletePost()) // router.DELETE(POST_ROUTE_PREFIX, DeletePost()) // maybe DELETE > POST
-	router.PATCH(POST_ROUTE_PREFIX, EditPost())            // maybe PATCH > POST
-	router.PATCH(POST_ROUTE_PREFIX+"/vote", Vote())        // maybe PATCH > POST
 }

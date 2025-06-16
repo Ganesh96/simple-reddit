@@ -1,52 +1,16 @@
-<br>
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
+<div *ngIf="isLoading" class="spinner-container">
+  <mat-spinner></mat-spinner>
+</div>
 
-<button mat-raised-button color="primary" class="hover-class3" a routerLink="/newsubredditsform">
-    Create New Community
-</button>
-&nbsp;
-&nbsp;
-
-<!-- Public Subreddits -->
-<ul *ngFor="let subreddit of this.subreddits">
-    <mat-card>
-        <div (click)="gotoCommunityPage(subreddit._id)">
-        <mat-card-header>
-            <mat-card-title>{{subreddit.name}}</mat-card-title>
-        </mat-card-header>
-        </div>
-        <mat-card-content>
-          <p>
-              {{ subreddit.description}}
-          </p>
-        </mat-card-content>
-        <!-- Upvote and Downvote the Subreddits -->
-        <mat-card-actions>
-            <button mat-flat-button color="primary" class="hover-class1">
-                <mat-icon>thumb_up</mat-icon>
-            </button>
-            &nbsp;
-            &nbsp;
-            <button mat-flat-button color="primary" class="hover-class2">
-                <mat-icon>thumb_down</mat-icon>
-            </button>
-            &nbsp;
-            &nbsp;
-            &nbsp;
-        </mat-card-actions>
-      </mat-card>
-
-      <!--Scroll to top-->
-
-      <div class="scroll-to-top " [ngClass]="{'show-scrollTop': windowScrolled}">
-        <button type="button" class="btn active hover-class5" data-toggle="button" aria-pressed="true" (click)="scrollToTop()">
-            <i class="fas fa-chevron-up" ></i>
-            Top
-        </button>
-      </div>
-</ul>
+<div *ngIf="!isLoading">
+  <div *ngFor="let subreddit of subreddits">
+    <mat-card class="example-card">
+      <mat-card-header>
+        <mat-card-title>r/{{subreddit.name}}</mat-card-title>
+      </mat-card-header>
+      <mat-card-actions>
+        <a mat-button routerLink="/r/{{subreddit.name}}">VIEW</a>
+      </mat-card-actions>
+    </mat-card>
+  </div>
+</div>

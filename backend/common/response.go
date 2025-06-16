@@ -1,20 +1,21 @@
 package common
 
-const (
-	API_SUCCESS                string = "success"
-	API_FAILURE                string = "failure"
-	API_ERROR                  string = "error"
-	REQUEST_VALIDATION_ERROR   string = "request_validation_error"
-	INVALID_REQUEST_DATA_ERROR string = "request_invalid_error"
-)
+import "net/http"
 
 type APIResponse struct {
-	Status  int                    `json:"status"`
-	Message string                 `json:"message"`
-	Data    map[string]interface{} `json:"data"`
+	Status  int         `json:"status"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
 }
 
-type APIMessage struct {
-	Status  int    `json:"status" uri:"status" validate:"required"`
-	Message string `json:"message" uri:"message" validate:"required"`
+func NewAPIResponse(status int, message string, data interface{}) APIResponse {
+	return APIResponse{
+		Status:  status,
+		Message: message,
+		Data:    data,
+	}
+}
+
+func RespondWithJSON(c *gin.Context, status int, message string, data interface{}) {
+	c.JSON(status, NewAPIResponse(status, message, data))
 }

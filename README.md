@@ -1,86 +1,69 @@
-# Simple Reddit
+# Simple Reddit Clone
 
-https://github.com/shenoy-anurag/simple-reddit
+This project is a full-stack web application that mimics some of the basic functionalities of Reddit. It features a modern backend API and responsive frontend interface.
 
-[![angular build](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/angular-build.yml/badge.svg?branch=main)](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/angular-build.yml)
-[![go build](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/go-build.yml/badge.svg?branch=main)](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/go-build.yml)
-[![go tests](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/go-tests.yml/badge.svg)](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/go-tests.yml)
+## Key Features
 
-[![AWS Deploy](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/ci-cd-aws.yml/badge.svg)](https://github.com/shenoy-anurag/simple-reddit/actions/workflows/ci-cd-aws.yml)
+- User authentication system with secure JWT implementation
+- Complete post management (create, read, update, delete)
+- Community/subreddit creation and moderation
+- User profile system
+- RESTful API design following best practices
 
-Frontend is deployed to <http://3.21.236.152:4200/>
+## Technical Stack
 
-Backend is deployed to <http://3.21.236.152:8080/ping>
+**Backend:**
+- Built with Go using the Gin framework
+- MongoDB for data storage
+- JWT for authentication
 
-### Description:
-
-Simple Reddit is inspired from THE Reddit. It is being built as semester long project for the course Software Engineering - CEN 5035 at the University of Florida. Simple Reddit is a forum for anyone to post content and comment on posts built using Angular JS, Go, and MongoDB.
-
-The aim of the project is to use Agile methodologies to quickly develop shippable code and to iteratively improve the product based on feedback.
-
-We are using Github Projects to manage our Sprints, writing user stories as Issues and building functionality to close issues and achieve milestones. We are also documenting the project on the repo’s [wiki](https://github.com/shenoy-anurag/simple-reddit/wiki).
-
-Users will be able to:
-
-* Create accounts
-* Create communities
-* Create/edit/delete posts
-* View posts on communities
-* Comment on posts
-* Upvote/Downvote posts
-* Upvote/Downvote comments
-* Save posts and comments to their profile
-
-## Built With
-
-* [Angular 14](https://angular.io/guide/setup-local) - The Angular JS framework used to develop the front end.
-* [GoLang](https://go.dev/) - The language used to develop the back end.
-* [MonogoDB](https://www.mongodb.com/) - Database used to store and manage information.
+**Frontend:**
+- Angular framework with TypeScript
+- Angular Material for UI components
+- Responsive design
 
 ## Getting Started
-### Install
 
-* [Angular 14 & AngularCLI](https://angular.io/guide/setup-local)
-* [Go](https://go.dev/doc/install)
-* [MongoDB](https://docs.mongodb.com/manual/installation/)
+### Prerequisites
 
-More on how to setup the Back-end is available [here](https://github.com/shenoy-anurag/simple-reddit/blob/main/backend/Readme.md).
+- Go (version 1.15+)
+- Node.js and npm (version 14+)
+- MongoDB database
 
-More on how to setup the Front-end can be found [here](https://github.com/shenoy-anurag/simple-reddit/blob/main/frontend/forum-app/README.md).
+### Installation
 
-## Documentation, API Reference and Tutorials
-[Documentation](https://github.com/shenoy-anurag/simple-reddit/wiki), 
-[API Reference](https://github.com/shenoy-anurag/simple-reddit/wiki/API-Overview), 
-[Video Tutorials](https://github.com/shenoy-anurag/simple-reddit/wiki/Demo).
+1. Configure environment variables for both backend and frontend
+2. Install required dependencies
+3. Start both backend server and frontend development server
 
-## Sprint 1
-Summary of Sprint 1 is [here](https://github.com/shenoy-anurag/simple-reddit/blob/800f7f3ab01ff884d0130f8386bbea5ba3a27b0c/Sprint1.md).
+The application runs with backend serving APIs on port 8080 and frontend running on port 4200.
 
-## Sprint 2
-Summary of Sprint 2 is [here](https://github.com/shenoy-anurag/simple-reddit/blob/main/Sprint2.md).
+## API Overview
 
-## Sprint 3
-Summary of Sprint 3 is [here](https://github.com/shenoy-anurag/simple-reddit/blob/main/Sprint3.md).
+The application provides RESTful endpoints for:
 
-## Sprint 4
-Summary of Sprint 4 is [here](https://github.com/shenoy-anurag/simple-reddit/blob/main/Sprint4.md)
+### Authentication
+- User registration
+- Login with JWT token generation
 
-## Authors
-* **Manoj Jampana** - [manojjampana](https://github.com/manojjampana)
-* **John Ng** - [NgJohn15](https://github.com/NgJohn15)
-* **Ganesan Santhanam** - [ganesansanthanam](https://github.com/ganesansanthanam)
-* **Anurag Shenoy** - [shenoy-anurag](https://github.com/shenoy-anurag)
+### Posts
+- Full CRUD operations for posts
+- Pagination and filtering support
 
-## Backend Developers
-* [Anurag Shenoy](https://github.com/shenoy-anurag)
-* [Ganesan Santhanam](https://github.com/ganesansanthanam)
+### Communities
+- Create and manage communities
+- Community-specific post feeds
 
-## Frontend Developers
-* [John Ng](https://github.com/NgJohn15)
-* [Manoj Jampana](https://github.com/manojjampana)
+### Users
+- Profile management
+- Account deletion
 
-See also the list of [contributors](https://github.com/shenoy-anurag/forum/graphs/contributors) who participated in this project.
+## Project Highlights
 
-## Contact information:
+- Implemented secure authentication flow
+- Designed scalable API architecture
+- Created responsive UI components
+- Optimized database queries for performance
+- Followed REST API best practices
 
-For questions, please contact ngjohn15@gmail.com
+Note: Implementation details and source code structure are intentionally omitted as this is a portfolio showcase.

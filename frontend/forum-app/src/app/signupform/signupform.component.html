@@ -1,86 +1,17 @@
-<h1>Sign Up</h1>
-<form class="form" [formGroup]="form">
-    <!-- First and last name -->
-    <table class="full-width" cellspacing="0">
-        <tr>
-            <td>
-                <mat-form-field class="full-width" appearance="fill">
-                    <mat-label>First name</mat-label>
-                    <input name='firstname' matInput formControlName="firstname" type="text" #firstname placeholder="John">
-                    <mat-error *ngIf="f['firstname'].touched && f['firstname'].invalid">
-                        Cannot be empty
-                    </mat-error>
-                </mat-form-field>
-            </td>
-            <td>
-                <mat-form-field class="full-width" appearance="fill">
-                    <mat-label>Last Name</mat-label>
-                    <input name='lastname' matInput formControlName="lastname" type="text" #lastname placeholder="Doe">
-                    <mat-error *ngIf="f['lastname'].touched && f['lastname'].invalid">
-                        Cannot be empty
-                    </mat-error>
-                </mat-form-field>
-            </td>
-        </tr>
-    </table>
-
-    <!-- Email -->
-    <mat-form-field class="full-width" appearance="fill">
-        <mat-label>Email</mat-label>
-        <input name='email' type="email" matInput formControlName= "email" #email placeholder="john.doe@email.com">
-        <mat-error *ngIf="f['email'].touched && f['email'].invalid">
-            Please enter a valid email address
-        </mat-error>
+<div class="container">
+  <form [formGroup]="form" (ngSubmit)="onSubmit()">
+    <mat-form-field>
+      <input matInput placeholder="Username" formControlName="username">
+      <mat-error *ngIf="f['username'].errors?.['required']">Username is required.</mat-error>
     </mat-form-field>
 
-    <!-- Username -->
-    <mat-form-field class="full-width" appearance="fill">
-        <mat-label>User Name</mat-label>
-        <input name='username' matInput formControlName="username" type="text" #username placeholder="JohnDoe">
-        <!-- <mat-error *ngIf="f['username'].touched && f['username'].invalid">
-            Username is not valid
-        </mat-error> -->
-        <mat-error *ngIf="f['username'].touched && f['username'].invalid">
-            Username Cannot be empty
-        </mat-error>
+    <mat-form-field>
+      <input matInput type="password" placeholder="Password" formControlName="password">
+      <mat-error *ngIf="f['password'].errors?.['required']">Password is required.</mat-error>
+      <mat-error *ngIf="f['password'].errors?.['minlength']">Password must be at least 8 characters long.</mat-error>
+      <mat-error *ngIf="f['password'].errors?.['pattern']">Password must contain at least one uppercase letter, one lowercase letter, and one number.</mat-error>
     </mat-form-field>
 
-    <!-- Passwords -->
-    <mat-form-field class="full-width" appearance="fill">
-        <mat-label>Password</mat-label>
-        <input matInput [type]="showPassword ? 'text' : 'password'" name="password" formControlName=password #password>
-        <mat-icon matSuffix (click)="togglePasswordVisibility()">
-            {{showPassword?'visibility_off':'visibility'}}
-        </mat-icon>
-        <mat-error *ngIf="f['password'].touched && f['password'].invalid">
-            Password must contain at least 6 characters: 1 Uppercase, 1 Lowercase, 1 numeric
-        </mat-error>
-    </mat-form-field>
-    <mat-form-field class="full-width" appearance="fill">
-        <mat-label>Confirm Password</mat-label>
-        <input name='password2' matInput type="password" formControlName="password2" #password2>
-        <mat-error *ngIf="password.value != password2.value">
-            Passwords don't match
-        </mat-error>
-    </mat-form-field>
-</form>
-
-<br><br>
-<button class="full-width hover-class1" mat-raised-button
-    (click)="getSignUp(firstname.value, lastname.value, username.value, email.value, password.value)" color="warn">Submit</button>
-
-
-<!-- Routing Links -->
-<p>By clicking Sign Up you agree to our <br>
-    <a href="#">Terms and Conditions</a> and <a href="#">Policy Privacy</a>
-</p>
-<p class="para-2">Already a user? <a routerLink="/login">Login here</a></p>
-
-<!--Scroll to top-->
-
-  <div class="scroll-to-top " [ngClass]="{'show-scrollTop': windowScrolled}">
-    <button type="button" class="btn active hover-class3" data-toggle="button" aria-pressed="true" (click)="scrollToTop()">
-        <i class="fas fa-chevron-up" ></i>
-        Top
-    </button>
-  </div>
+    <button mat-raised-button color="primary" type="submit" [disabled]="!form.valid">Sign Up</button>
+  </form>
+</div>

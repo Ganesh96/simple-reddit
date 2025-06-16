@@ -3,499 +3,139 @@ package users
 import (
 	"context"
 	"net/http"
-	"simple-reddit/common"
-	"simple-reddit/configs"
-	"simple-reddit/profiles"
 	"time"
 
+	"github.com/ganesh96/simple-reddit/backend/common"
+	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
-const HASHING_COST = 10
-const USER_ROUTE_PREFIX = "/users"
+// userCollection is a package-level variable to interact with the "users" collection in MongoDB.
+var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
 
-const UsersCollectionName string = "users"
-const CommunitiesCollectionName string = "communities"
+// HashPassword hashes a password using bcrypt.
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14) // 14 is the cost factor
+	return string(bytes), err
+}
 
-// const PostsCollectionName string = "posts"
+// CheckPasswordHash compares a plaintext password with a hashed password.
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
 
-var UsersCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, UsersCollectionName)
-var CommunityCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, CommunitiesCollectionName)
-
-// var PostsCollection *mongo.Collection = configs.GetCollection(configs.MongoDB, PostsCollectionName)
-var validate = validator.New()
-
+// CreateUser handles new user registration.
 func CreateUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var user CreateUserRequest
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		var user User
 
-		// validate the request body
 		if err := c.BindJSON(&user); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
 			return
 		}
 
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&user); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		saltedAndHashedPwd, err := bcrypt.GenerateFromPassword([]byte(user.Password), HASHING_COST)
+		// Check if username already exists
+		count, err := userCollection.CountDocuments(ctx, bson.M{"username": user.Username})
 		if err != nil {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+			return
+		}
+		if count > 0 {
+			common.RespondWithJSON(c, http.StatusConflict, common.USERNAME_ALREADY_EXISTS, gin.H{})
 			return
 		}
 
-		user.Password = string(saltedAndHashedPwd)
-		usernameAlreadyExists, err := CheckUsername(user.Username)
-		if usernameAlreadyExists {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data: map[string]interface{}{
-						"error":                 common.ERR_USERNAME_ALREADY_EXISTS.Message,
-						"usernameAlreadyExists": usernameAlreadyExists},
-				},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		result, err := CreateUserInDB(user)
+		// Hash the password before storing it
+		hashedPassword, err := HashPassword(user.Password)
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, "Error hashing password", gin.H{"error": err.Error()})
 			return
 		}
-		userCreatedDB, err := GetUserDetails(user.Username)
-		profileCreatedReq := ConvertUserDBModelToProfileDBModel(userCreatedDB)
-		isCreated := profiles.CreateProfile(profileCreatedReq)
-		if !isCreated {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+		user.Password = hashedPassword
+
+		// Insert the new user
+		result, err := userCollection.InsertOne(ctx, user)
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(
-			http.StatusCreated,
-			common.APIResponse{
-				Status:  http.StatusCreated,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"data": result}},
-		)
+
+		common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"user": result})
 	}
 }
 
-func LoginUser() gin.HandlerFunc {
+// Login handles user authentication.
+func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		var user User
+		var foundUser User
 
-		//var userName string
-		//var userPwd string
-		var loginUserReq LoginUserRequest
-		if err := c.BindJSON(&loginUserReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		userDB, err := GetUserDetails(loginUserReq.Username)
-		if err != nil {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		err = bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(loginUserReq.Password))
-		if err != nil {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": common.ERR_INCORRECT_CREDENTIALS.Message}},
-			)
-			return
-		}
-		if err == nil {
-			token := configs.JWTAuthService().GenerateToken(userDB.Username)
-
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_SUCCESS,
-					Data: map[string]interface{}{
-						"accessToken": token,
-						"user":        ConvertUserDBModelToUserResponse(userDB)},
-				},
-			)
-		}
-	}
-}
-
-func CheckUsernameExists() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var user CheckUsernameRequest
-		// validate the request body
 		if err := c.BindJSON(&user); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
 			return
 		}
 
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&user); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		usernameAlreadyExists, err := CheckUsername(user.Username)
+		// Find user by username
+		err := userCollection.FindOne(ctx, bson.M{"username": user.Username}).Decode(&foundUser)
 		if err != nil {
-			c.JSON(
-				http.StatusOK,
-				common.APIResponse{
-					Status:  http.StatusOK,
-					Message: common.API_FAILURE,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			if err == mongo.ErrNoDocuments {
+				common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{})
+				return
+			}
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(
-			http.StatusOK,
-			common.APIResponse{
-				Status:  http.StatusOK,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"usernameAlreadyExists": usernameAlreadyExists}},
-		)
+
+		// Check if the password is correct
+		if !CheckPasswordHash(user.Password, foundUser.Password) {
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{})
+			return
+		}
+
+		// Generate JWT token
+		token, err := GenerateJWT(foundUser.Username)
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusInternalServerError, "Failed to generate token", gin.H{"error": err.Error()})
+			return
+		}
+
+		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"token": token, "username": foundUser.Username})
 	}
 }
 
-func GetUserSubscriptions() gin.HandlerFunc {
+// DeleteUser handles the deletion of a user account.
+func DeleteUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var getSubReq GetSubsciptionsRequest
-		// validate the request body
-		if err := c.BindJSON(&getSubReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		username := c.Param("username")
+
+		// It's good practice to verify ownership before deletion.
+		// The JWT middleware should add user info to the context.
+		tokenUsername, exists := c.Get("username")
+		if !exists || tokenUsername != username {
+			common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{})
 			return
 		}
 
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&getSubReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		result, err := FetchSubsciptions(getSubReq)
-		if err == mongo.ErrNoDocuments {
-			c.JSON(
-				http.StatusNotFound,
-				common.APIResponse{
-					Status:  http.StatusNotFound,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		} else if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-		c.JSON(
-			http.StatusCreated,
-			common.APIResponse{
-				Status:  http.StatusCreated,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"subscriptions": result}},
-		)
-	}
-}
-
-func UpdateUserSubscriptions() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var updateSubReq UpdateSubsciptionRequest
-		// validate the request body
-		if err := c.BindJSON(&updateSubReq); err != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
-			return
-		}
-
-		// use the validator library to validate required fields
-		if validationErr := validate.Struct(&updateSubReq); validationErr != nil {
-			c.JSON(
-				http.StatusBadRequest,
-				common.APIResponse{
-					Status:  http.StatusBadRequest,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": validationErr.Error()}},
-			)
-			return
-		}
-
-		result, err := UpdateSubsciptions(updateSubReq)
+		result, err := userCollection.DeleteOne(ctx, bson.M{"username": username})
 		if err != nil {
-			c.JSON(
-				http.StatusInternalServerError,
-				common.APIResponse{
-					Status:  http.StatusInternalServerError,
-					Message: common.API_ERROR,
-					Data:    map[string]interface{}{"error": err.Error()}},
-			)
+			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(
-			http.StatusCreated,
-			common.APIResponse{
-				Status:  http.StatusCreated,
-				Message: common.API_SUCCESS,
-				Data:    map[string]interface{}{"updatedSubscriptions": result}},
-		)
-	}
-}
-
-func CreateUserInDB(user CreateUserRequest) (result *mongo.InsertOneResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	newUserStruct := ConvertUserRequestToUserDBModel(user)
-	result, err = UsersCollection.InsertOne(ctx, newUserStruct)
-	return result, err
-}
-
-// Provide username and context as parameter to
-func GetUserDetails(userName string) (UserDBModel, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var user UserDBModel
-	filter := bson.D{primitive.E{Key: "username", Value: userName}}
-	err := UsersCollection.FindOne(ctx, filter).Decode(&user)
-	return user, err
-}
-
-func CheckUsername(username string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var alreadyExists bool
-	var user UserDBModel
-	filter := bson.D{primitive.E{Key: "username", Value: username}}
-	err := UsersCollection.FindOne(ctx, filter).Decode(&user)
-	if err == nil {
-		if user.Username == username {
-			alreadyExists = true
-		} else {
-			alreadyExists = false
+		if result.DeletedCount == 0 {
+			common.RespondWithJSON(c, http.StatusNotFound, common.USER_NOT_FOUND, gin.H{})
+			return
 		}
-	} else {
-		if err == mongo.ErrNoDocuments {
-			err = nil
-		}
+		c.Status(http.StatusNoContent)
 	}
-	return alreadyExists, err
-}
-
-func FetchSubsciptions(getSubReq GetSubsciptionsRequest) ([]CommunityDBModel, error) { // UserDBModel,error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	// var alreadyExists bool
-	// userDB,err :=GetUserDetails(username)
-	var userDB UserDBModel
-	var comunitiesSubscribed []CommunityDBModel
-	filter := bson.D{primitive.E{Key: "username", Value: getSubReq.Username}}
-	err := UsersCollection.FindOne(ctx, filter).Decode(&userDB)
-	if err == mongo.ErrNoDocuments {
-		err = nil
-		return comunitiesSubscribed, err
-	}
-	subscriptions := userDB.Subcriptions
-	for _, communityID := range subscriptions {
-		community, err := retrieveCommunityDetailsByID(communityID)
-		if err != nil {
-			return comunitiesSubscribed, err
-		}
-		comunitiesSubscribed = append(comunitiesSubscribed, community)
-		// item, err := ConvertPostDBModelToPostResponse(post)
-		// if err != nil {
-		// 	return postResp, err
-		// }
-		// postResp = append(postResp, item)
-	}
-	// CommunityDB, err :=retrieveCommunityDetails(updateSubReq.CommunityName)
-	// updatedSubscriptions := userDB.Subcriptions
-	// //newSaveComment, err := GetComment(saveCommentReq)
-	// updatedSubscriptions = append(updatedSubscriptions, CommunityDB.ID)
-	// updateQuery := bson.D{
-	// 	primitive.E{
-	// 		Key: "$set",
-	// 		Value: bson.D{
-	// 			primitive.E{Key: "subcriptions", Value: updatedSubscriptions},
-	// 		},
-	// 	},
-	// }
-	// result, err = UsersCollection.UpdateOne(ctx, filter, updateQuery)
-	// return result, err
-	return comunitiesSubscribed, err
-}
-
-func UpdateSubsciptions(updateSubReq UpdateSubsciptionRequest) (result *mongo.UpdateResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	// var alreadyExists bool
-	// userDB,err :=GetUserDetails(username)
-	var userDB UserDBModel
-	filter := bson.D{primitive.E{Key: "username", Value: updateSubReq.Username}}
-	err = UsersCollection.FindOne(ctx, filter).Decode(&userDB)
-	if err == mongo.ErrNoDocuments {
-		err = nil
-		return result, err
-	}
-	CommunityDB, err := retrieveCommunityDetails(updateSubReq.CommunityName)
-	updatedSubscriptions := userDB.Subcriptions
-	//newSaveComment, err := GetComment(saveCommentReq)
-	updatedSubscriptions = append(updatedSubscriptions, CommunityDB.ID)
-	updateQuery := bson.D{
-		primitive.E{
-			Key: "$set",
-			Value: bson.D{
-				primitive.E{Key: "subcriptions", Value: updatedSubscriptions},
-			},
-		},
-	}
-	result, err = UsersCollection.UpdateOne(ctx, filter, updateQuery)
-	if err!=nil {
-		return result,err
-	}
-	_, err = UpdateSubscriberInCommunity(CommunityDB,userDB)
-	if err!=nil {
-		return result,err
-	}
-	return result, err
-}
-
-func UpdateSubscriberInCommunity(community CommunityDBModel,user UserDBModel) (result *mongo.UpdateResult, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	// var community CommunityDBModel
-	filter := bson.D{primitive.E{Key: "name", Value: community.Name}}
-	updatedSubscribers := community.Subscribers
-	updatedSubscribers = append(updatedSubscribers, user.ID)
-	updateQuery := bson.D{
-		primitive.E{
-			Key: "$set",
-			Value: bson.D{
-				primitive.E{Key: "subscribers", Value: updatedSubscribers},
-			},
-		},
-	}
-	// err := CommunityCollection.FindOne(ctx, filter).Decode(&community)
-	result, err = CommunityCollection.UpdateOne(ctx, filter, updateQuery)
-	return result, err
-}
-
-func retrieveCommunityDetails(communityName string) (CommunityDBModel, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var community CommunityDBModel
-	filter := bson.D{primitive.E{Key: "name", Value: communityName}}
-	err := CommunityCollection.FindOne(ctx, filter).Decode(&community)
-	return community, err
-}
-
-func retrieveCommunityDetailsByID(communityID primitive.ObjectID) (CommunityDBModel, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var communityDB CommunityDBModel
-	filter := bson.D{primitive.E{Key: "_id", Value: communityID}}
-	err := CommunityCollection.FindOne(ctx, filter).Decode(&communityDB)
-	return communityDB, err
-}
-
-func Routes(router *gin.Engine) {
-	router.POST(USER_ROUTE_PREFIX+"/signup", CreateUser())
-	router.POST(USER_ROUTE_PREFIX+"/loginuser", LoginUser())
-	router.POST(USER_ROUTE_PREFIX+"/check-username", CheckUsernameExists())
-	router.POST(USER_ROUTE_PREFIX+"/GetCommunitiesFollowed", GetUserSubscriptions())
-	router.POST(USER_ROUTE_PREFIX+"/UpdateSubsciptions", UpdateUserSubscriptions())
 }

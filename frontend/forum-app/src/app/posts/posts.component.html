@@ -1,106 +1,24 @@
-<br>
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-
-<!-- Create a New Post -->
-<button mat-flat-button color="primary" class="hover-class1" routerLink="/newpostform">
-  Create New Post
-</button>
-
-<!-- Public Posts -->
-<ul *ngFor='let post of this.posts'>
-  <mat-card>
-    <mat-card-header>
-      <div (click)="gotoPost(post._id)">
-        <mat-card-title>{{ post.title }}</mat-card-title>
-        <mat-card-subtitle>created at {{ post.created_at }}</mat-card-subtitle>
-        <mat-card-subtitle> {{ post.upvotes-post.downvotes }} </mat-card-subtitle>
-    </div>
-    </mat-card-header>
-    <mat-card-content>
-      <div (click)="gotoPost(post._id)">
-      <p>
-        {{post.body}}
-      </p>
-      </div>
-    </mat-card-content>
-    <mat-card-actions>
-      <!-- <button mat-button>Upvote</button> -->
-      &nbsp;
-      <button mat-flat-button color="primary" class="hover-class2" (click)="upvotePost(post._id)">
-        <mat-icon>thumb_up</mat-icon>
-      </button>
-      &nbsp; &nbsp;
-      <!-- <button mat-button>Downvote</button> -->
-      <button mat-flat-button color="primary" class="hover-class3" (click)="downvotePost(post._id)">
-        <mat-icon>thumb_down</mat-icon>
-      </button>
-      &nbsp;
-      <button mat-flat-button color="primary" class="hover-class6" (click)="gotoPost(post._id)">
-        <mat-icon>
-          comment
-        </mat-icon>
-      </button>
-      &nbsp;&nbsp;
-      &nbsp;
-      <button mat-flat-button color="accent" class="hover-class7" (click)="togglePostSave(post._id)">
-        <mat-icon>
-          collections_bookmark
-        </mat-icon>
-      </button>
-      &nbsp;
-      &nbsp;
-      &nbsp;
-      &nbsp;
-      &nbsp;
-      <!-- no post.username field yet -->
-      &nbsp;
-      &nbsp;
-      &nbsp;&nbsp;&nbsp;&nbsp;
-    </mat-card-actions>
-  </mat-card>
-</ul>
-<!--Scroll to top-->
-
-<div class="scroll-to-top " [ngClass]="{'show-scrollTop': windowScrolled}">
-  <button type="button" class="btn active hover-class4" data-toggle="button" aria-pressed="true"
-    (click)="scrollToTop()">
-    <i class="fas fa-chevron-up"></i>
-    Top
-  </button>
+<div *ngIf="isLoading" class="spinner-container">
+  <mat-spinner></mat-spinner>
 </div>
 
-
-<!-- Terms and Conditions -->
-
-<button mat-raised-button color="warn" class="hover-class5" routerLink="/termsandconditions">
-  Terms and Conditions
-</button>
-
-&nbsp;
-&nbsp;
-&nbsp;
-
-<button mat-raised-button color="warn" class="hover-class5" routerLink="/privacypolicy">
-  Privacy Policy
-</button>
-
-&nbsp;
-&nbsp;
-&nbsp;
-
-<button mat-raised-button color="warn" class="hover-class5" routerLink="/contentpolicy">
-  Content Policy
-</button>
-
-&nbsp;
-&nbsp;
-&nbsp;
-
-<button mat-raised-button color="warn" class="hover-class5" routerLink="/modpolicy">
-  Mod Policy
-</button>
+<div *ngIf="!isLoading">
+  <div *ngFor="let post of posts">
+    <mat-card class="example-card">
+      <mat-card-header>
+        <mat-card-title>{{post.title}}</mat-card-title>
+        <mat-card-subtitle>r/{{post.community}}</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>
+          {{post.text}}
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-button>LIKE</button>
+        <button mat-button>SHARE</button>
+        <a mat-button routerLink="/post/{{post.post_id}}">VIEW</a>
+      </mat-card-actions>
+    </mat-card>
+  </div>
+</div>
