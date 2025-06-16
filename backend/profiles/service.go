@@ -31,7 +31,6 @@ func GetProfile() gin.HandlerFunc {
 			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
 			return
 		}
-
 		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"profile": profile})
 	}
 }

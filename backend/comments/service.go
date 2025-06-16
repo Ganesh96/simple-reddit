@@ -15,7 +15,6 @@ import (
 
 var commentCollection *mongo.Collection = configs.GetCollection(configs.DB, "comments")
 
-// CreateComment handles the creation of a new comment.
 func CreateComment() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -43,7 +42,6 @@ func CreateComment() gin.HandlerFunc {
 	}
 }
 
-// GetCommentsForPost retrieves all comments associated with a specific post.
 func GetCommentsForPost() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -72,7 +70,6 @@ func GetCommentsForPost() gin.HandlerFunc {
 	}
 }
 
-// DeleteComment deletes a comment by its ID.
 func DeleteComment() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

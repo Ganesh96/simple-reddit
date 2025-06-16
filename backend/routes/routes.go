@@ -10,7 +10,7 @@ import (
 )
 
 func SetupRouter(router *gin.Engine) {
-	// Public routes that do not require authentication
+	// Public routes
 	router.POST("/login", users.Login)
 	router.POST("/user", users.CreateUser)
 	router.GET("/posts", posts.GetAllPosts)
@@ -19,16 +19,16 @@ func SetupRouter(router *gin.Engine) {
 	router.GET("/community/:name", communities.GetCommunityByName)
 	router.GET("/comments/post/:postid", comments.GetCommentsForPost())
 
-	// All routes in this group require a valid JWT
+	// Authenticated routes
 	authorized := router.Group("/")
 	authorized.Use(users.AuthorizeJWT())
 	{
-		authorized.POST("/post", posts.CreatePost())
-		authorized.PATCH("/post/:id", posts.UpdatePost())
-		authorized.DELETE("/post/:id", posts.DeletePost())
+		authorized.POST("/post", posts.CreatePost)
+		authorized.PATCH("/post/:id", posts.UpdatePost)
+		authorized.DELETE("/post/:id", posts.DeletePost)
 
-		authorized.POST("/community", communities.CreateCommunity())
-		authorized.DELETE("/community/:name", communities.DeleteCommunity())
+		authorized.POST("/community", communities.CreateCommunity)
+		authorized.DELETE("/community/:name", communities.DeleteCommunity)
 
 		authorized.GET("/profile/:username", profiles.GetProfile())
 		authorized.DELETE("/user/:username", users.DeleteUser)

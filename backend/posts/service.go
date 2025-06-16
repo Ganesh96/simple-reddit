@@ -65,7 +65,6 @@ func GetAllPosts() gin.HandlerFunc {
 		if posts == nil {
 			posts = []Post{}
 		}
-
 		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"posts": posts})
 	}
 }
@@ -115,6 +114,7 @@ func UpdatePost() gin.HandlerFunc {
 		}
 
 		update := bson.M{"$set": bson.M{"text": post.Text}}
+
 		result, err := postCollection.UpdateOne(ctx, bson.M{"post_id": objId}, update)
 		if err != nil {
 			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
@@ -125,7 +125,6 @@ func UpdatePost() gin.HandlerFunc {
 			common.RespondWithJSON(c, http.StatusNotFound, common.POST_NOT_FOUND, gin.H{})
 			return
 		}
-
 		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"modifiedCount": result.ModifiedCount})
 	}
 }

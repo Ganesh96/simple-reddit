@@ -10,19 +10,18 @@ import (
 func main() {
 	router := gin.Default()
 
-	// Configure CORS to allow requests from the frontend development server.
+	// Configure CORS
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{"http://localhost:4200"}
 	config.AllowMethods = []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
 	router.Use(cors.New(config))
 
-	// Connect to the MongoDB database.
+	// Connect to the database
 	configs.ConnectDB()
 
-	// Set up the API routes.
+	// Setup routes
 	routes.SetupRouter(router)
 
-	// Start the server.
 	router.Run("localhost:8080")
 }

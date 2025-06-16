@@ -1,14 +1,14 @@
 package common
 
-import "net/http"
+import "github.com/gin-gonic/gin"
 
 type APIResponse struct {
 	Status  int         `json:"status"`
-	Message string      `json:"message"`
+	Message APIMessage  `json:"message"`
 	Data    interface{} `json:"data"`
 }
 
-func NewAPIResponse(status int, message string, data interface{}) APIResponse {
+func NewAPIResponse(status int, message APIMessage, data interface{}) APIResponse {
 	return APIResponse{
 		Status:  status,
 		Message: message,
@@ -16,6 +16,6 @@ func NewAPIResponse(status int, message string, data interface{}) APIResponse {
 	}
 }
 
-func RespondWithJSON(c *gin.Context, status int, message string, data interface{}) {
+func RespondWithJSON(c *gin.Context, status int, message APIMessage, data interface{}) {
 	c.JSON(status, NewAPIResponse(status, message, data))
 }

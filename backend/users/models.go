@@ -5,7 +5,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// User defines the structure for a user in the database.
 type User struct {
 	Id       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Username string             `bson:"username,omitempty" json:"username,omitempty" validate:"required"`

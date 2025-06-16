@@ -2,39 +2,38 @@ package configs
 
 import (
 	"context"
-	"os"
+	"fmt"
+	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func CreateClient() *mongo.Client {
-	LoadEnvVariables()
+var DB *mongo.Client
+
+func ConnectDB() {
+	client, err := mongo.NewClient(options.Client().ApplyURI(EnvMongoURI()))
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	client, err := mongo.Connect(
-		ctx,
-		options.Client().ApplyURI(os.Getenv("MONGO_URI")),
-	)
+	err = client.Connect(ctx)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
-	// Check the connection
+
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
-	return client
+	fmt.Println("Connected to MongoDB")
+	DB = client
 }
 
-// MongoDB client instance
-var MongoClient *mongo.Client = CreateClient()
-var MongoDB *mongo.Database = MongoClient.Database(os.Getenv("DB_NAME"))
-
-// get database collections
-func GetCollection(db *mongo.Database, collectionName string) *mongo.Collection {
-	collection := db.Collection(collectionName)
+func GetCollection(client *mongo.Client, collectionName string) *mongo.Collection {
+	collection := client.Database("simple-reddit").Collection(collectionName)
 	return collection
 }

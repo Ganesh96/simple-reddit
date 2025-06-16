@@ -1,9 +1,14 @@
 package common
 
-var ERR_COMMUNITY_NOT_FOUND APIMessage = APIMessage{Message: "No record found for given community name"}
-var ERR_COMMENTS_NOT_FOUND APIMessage = APIMessage{Message: "No record found for given post id"}
-var ERR_COMMENT_NOT_VOTABLE APIMessage = APIMessage{Message: "Comment is not votable"}
-var ERR_INCORRECT_CREDENTIALS APIMessage = APIMessage{Message: "Incorrect Credentials"}
-var ERR_USERNAME_ALREADY_EXISTS APIMessage = APIMessage{Message: "Username Already Exists"}
-var ERR_COMMUNITY_ALREADY_EXISTS APIMessage = APIMessage{Message: "Community with that name already exists"}
-var ERR_PARENT_COMMENT_IS_DELETED APIMessage = APIMessage{Message: "Parent comment is deleted"}
+const (
+	INVALID_REQUEST_BODY     APIMessage = "Invalid request body"
+	MONGO_DB_ERROR           APIMessage = "Database error"
+	INVALID_POST_ID          APIMessage = "Invalid post ID"
+	POST_NOT_FOUND           APIMessage = "Post not found"
+	COMMUNITY_ALREADY_EXISTS APIMessage = "Community with that name already exists"
+	COMMUNITY_NOT_FOUND      APIMessage = "Community not found"
+	USERNAME_ALREADY_EXISTS  APIMessage = "Username already exists"
+	INVALID_CREDENTIALS      APIMessage = "Invalid username or password"
+	USER_NOT_FOUND           APIMessage = "User not found"
+	FORBIDDEN                APIMessage = "Forbidden"
+)

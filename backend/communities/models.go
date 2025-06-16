@@ -1,151 +1,102 @@
 package communities
 
 import (
+	"context"
+	"net/http"
 	"time"
-	// "github.com/go-playground/validator"
+
+	"github.com/ganesh96/simple-reddit/backend/common"
+	"github.com/ganesh96/simple-reddit/backend/configs"
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Models for Communities
-type CommunityDBModel struct {
-	ID              primitive.ObjectID `bson:"_id"`
-	UserName        string             `json:"username" validate:"required"`
-	Name            string             `bson:"name"`
-	Description     string             `bson:"description"`
-	SubscriberCount int                `bson:"subscriber_count"`
-	Subscribers []primitive.ObjectID `bson:"subscribers" validate:"required"`
-	CreatedAt       time.Time          `bson:"created_at"`
+var CommunitiesCollection *mongo.Collection = configs.GetCollection(configs.DB, "communities")
+
+// Community struct
+type Community struct {
+	Id            primitive.ObjectID `bson:"_id,omitempty"`
+	Name          string             `bson:"name,omitempty"`
+	Description   string             `bson:"description,omitempty"`
+	Creation_date time.Time          `bson:"creation_date,omitempty"`
+	Updation_date time.Time          `bson:"updation_date,omitempty"`
+	Members_count int                `bson:"members_count,omitempty"`
+	Posts_count   int                `bson:"posts_count,omitempty"`
+	Creator_name  string             `bson:"creator_name,omitempty"`
 }
 
-type CreateCommunityRequest struct {
-	UserName    string `json:"username" validate:"required"`
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description" validate:"required"`
-}
+type Communities []Community
 
-type GetCommunityRequest struct {
-	Name   string `json:"name" validate:"required"`
-	IsUser bool   `json:"isuser" validate:"exists"`
-}
+// CreateCommunity creates a new community
+func CreateCommunity(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var community Community
 
-type GetAllCommunitiesRequest struct {
-	PageNumber   uint32 `json:"p" form:"p"`
-	ItemsPerPage uint32 `json:"per_page" form:"per_page"`
-}
-
-// GetAllCommunitiesRequest struct constructor function
-func (gcr *GetAllCommunitiesRequest) fill_defaults() {
-	// setting default values
-	// if no values present
-	if gcr.PageNumber == 0 {
-		gcr.PageNumber = 1
+	if err := c.BindJSON(&community); err != nil {
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
+		return
 	}
-	if gcr.ItemsPerPage == 0 {
-		gcr.ItemsPerPage = 25
+
+	newCommunity := Community{
+		Id:            primitive.NewObjectID(),
+		Name:          community.Name,
+		Description:   community.Description,
+		Creator_name:  community.Creator_name,
+		Creation_date: time.Now(),
+		Updation_date: time.Now(),
+		Members_count: 1,
+		Posts_count:   0,
 	}
-}
 
-type GetPostsRequest struct {
-	Name string `json:"name" validate:"required"`
-}
-
-type EditCommunityRequest struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description" validate:"required"`
-}
-
-type DeleteCommunityRequest struct {
-	Name     string `json:"name" uri:"name" validate:"required"`
-	UserName string `json:"username" uri:"username" validate:"required"`
-}
-
-type CommunityResponse struct {
-	ID              primitive.ObjectID `json:"_id"`
-	Name            string             `json:"name"`
-	Description     string             `json:"description"`
-	SubscriberCount int                `json:"subscriber_count"`
-	CreatedAt       time.Time          `json:"created_at"`
-}
-
-type GetFeedRequest struct {
-	PageNumber    int    `json:"pagenumber"`
-	NumberOfPosts int    `json:"numberofposts"`
-	Mode          string `json:"mode"`
-}
-
-// use a single instance of Validate, it caches struct info
-// var valdate *validator.Validate
-
-// Validate validate input data
-// func ValidateGetCommunityRequest(gcr *GetCommunityRequest) (Validate(), error) {
-// 	valdate := validator.New()
-// 	return valdate.Struct(gcr)
-// }
-
-// Convertion functions to convert between different models.
-func ConvertCommunityRequestToCommunityDBModel(communityReq CreateCommunityRequest) CommunityDBModel { //, error) {
-	//user_id, err := primitive.ObjectIDFromHex(communityReq.UserID)
-	return CommunityDBModel{
-		ID:              primitive.NewObjectID(),
-		UserName:        communityReq.UserName,
-		Name:            communityReq.Name,
-		Description:     communityReq.Description,
-		SubscriberCount: 0,
-		CreatedAt:       time.Now().UTC(),
-	} //, err
-}
-
-func ConvertCommunityDBModelToCommunityResponse(communityDB CommunityDBModel) CommunityResponse {
-	return CommunityResponse{
-		ID:              communityDB.ID,
-		Name:            communityDB.Name,
-		Description:     communityDB.Description,
-		SubscriberCount: communityDB.SubscriberCount,
-		CreatedAt:       communityDB.CreatedAt,
+	result, err := CommunitiesCollection.InsertOne(ctx, newCommunity)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		return
 	}
+	common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"community": result})
 }
 
-func ConvertEditCommunityReqToGetCommunityReq(communityReq EditCommunityRequest) GetCommunityRequest {
-	return GetCommunityRequest{
-		Name: communityReq.Name,
+// GetAllCommunities gets all communities
+func GetAllCommunities(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var communities []Community
+
+	cursor, err := CommunitiesCollection.Find(ctx, bson.M{})
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		return
 	}
+	defer cursor.Close(ctx)
+
+	if err = cursor.All(ctx, &communities); err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		return
+	}
+	if communities == nil {
+		communities = []Community{}
+	}
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"communities": communities})
 }
 
-type PostDBModel struct {
-	ID          primitive.ObjectID `bson:"_id"`
-	CommunityID primitive.ObjectID `bson:"community_id"`
-	UserName    string             `bson:"username"`
-	Title       string             `bson:"title"`
-	Body        string             `json:"body"`
-	Upvotes     int                `bson:"upvotes"`
-	Downvotes   int                `bson:"downvotes"`
-	CreatedAt   time.Time          `bson:"created_at"`
-}
+// GetCommunityByName gets a single community by name
+func GetCommunityByName(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var community Community
+	communityName := c.Param("name")
 
-type PostResponse struct {
-	ID        primitive.ObjectID `json:"_id"`
-	Title     string             `json:"title"`
-	Body      string             `json:"body"`
-	Upvotes   int                `json:"upvotes"`
-	Downvotes int                `json:"downvotes"`
-	CreatedAt time.Time          `json:"created_at"`
-}
-
-func ConvertPostDBModelToPostResponse(postDB PostDBModel) (PostResponse, error) {
-	var err error
-	return PostResponse{
-		ID:        postDB.ID,
-		Title:     postDB.Title,
-		Body:      postDB.Body,
-		Upvotes:   postDB.Upvotes,
-		Downvotes: postDB.Downvotes,
-		CreatedAt: postDB.CreatedAt,
-	}, err
-}
-
-type CommunitySubscriberDBModel struct {
-	ID          primitive.ObjectID `bson:"_id"`
-	UserID      primitive.ObjectID `bson:"user_id"`
-	CommunityID primitive.ObjectID `bson:"community_id"`
-	JoinedAt    time.Time          `bson:"joined_at"`
+	err := CommunitiesCollection.FindOne(ctx, bson.M{"name": communityName}).Decode(&community)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			common.RespondWithJSON(c, http.StatusNotFound, common.COMMUNITY_NOT_FOUND, nil)
+			return
+		}
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		return
+	}
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"community": community})
 }
