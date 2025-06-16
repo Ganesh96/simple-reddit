@@ -1,13 +1,13 @@
 package users
 
 import (
-	"github.com/ganesh96/simple-reddit/backend/profiles"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/ganesh96/simple-reddit/backend/configs"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type User struct {
-	Id       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Username string             `bson:"username,omitempty" json:"username,omitempty" validate:"required"`
-	Password string             `bson:"password,omitempty" json:"password,omitempty" validate:"required"`
-	Profile  profiles.Profile   `bson:"profile,omitempty" json:"profile,omitempty"`
+var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
+
+type LoginDetails struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }

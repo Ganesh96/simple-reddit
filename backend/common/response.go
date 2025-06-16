@@ -2,20 +2,25 @@ package common
 
 import "github.com/gin-gonic/gin"
 
-type APIResponse struct {
-	Status  int         `json:"status"`
-	Message APIMessage  `json:"message"`
-	Data    interface{} `json:"data"`
+// APIMessage is a generic struct for API responses
+type APIMessage struct {
+	Message string `json:"message"`
+	Code    string `json:"code"`
 }
 
-func NewAPIResponse(status int, message APIMessage, data interface{}) APIResponse {
-	return APIResponse{
-		Status:  status,
-		Message: message,
-		Data:    data,
+// RespondWithJSON is a helper function to send a JSON response
+func RespondWithJSON(c *gin.Context, httpStatus int, code string, payload interface{}) {
+	var message string
+	if msg, ok := SuccessMessages[code]; ok {
+		message = msg.Message
+	} else if err, ok := ErrorMessages[code]; ok {
+		message = err.Message
 	}
-}
 
-func RespondWithJSON(c *gin.Context, status int, message APIMessage, data interface{}) {
-	c.JSON(status, NewAPIResponse(status, message, data))
+	c.JSON(httpStatus, gin.H{
+		"status":  httpStatus,
+		"message": message,
+		"code":    code,
+		"data":    payload,
+	})
 }

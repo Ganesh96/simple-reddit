@@ -1,14 +1,18 @@
 package common
 
 const (
-	INVALID_REQUEST_BODY     APIMessage = "Invalid request body"
-	MONGO_DB_ERROR           APIMessage = "Database error"
-	INVALID_POST_ID          APIMessage = "Invalid post ID"
-	POST_NOT_FOUND           APIMessage = "Post not found"
-	COMMUNITY_ALREADY_EXISTS APIMessage = "Community with that name already exists"
-	COMMUNITY_NOT_FOUND      APIMessage = "Community not found"
-	USERNAME_ALREADY_EXISTS  APIMessage = "Username already exists"
-	INVALID_CREDENTIALS      APIMessage = "Invalid username or password"
-	USER_NOT_FOUND           APIMessage = "User not found"
-	FORBIDDEN                APIMessage = "Forbidden"
+	MONGO_DB_ERROR             = "MONGO_DB_ERROR"
+	INVALID_REQUEST_BODY       = "INVALID_REQUEST_BODY"
+	INVALID_PARAM              = "INVALID_PARAM"
+	UNAUTHORIZED               = "UNAUTHORIZED"
+	EMAIL_ALREADY_EXISTS       = "EMAIL_ALREADY_EXISTS"
+	USERNAME_ALREADY_EXISTS    = "USERNAME_ALREADY_EXISTS"
+	USER_NOT_FOUND             = "USER_NOT_FOUND"
+	INCORRECT_PASSWORD         = "INCORRECT_PASSWORD"
+	COMMUNITY_NOT_FOUND        = "COMMUNITY_NOT_FOUND"
+	COMMUNITY_ALREADY_EXISTS   = "COMMUNITY_ALREADY_EXISTS"
+	POST_NOT_FOUND             = "POST_NOT_FOUND"
+	COMMENT_NOT_FOUND          = "COMMENT_NOT_FOUND"
+	INVALID_CREDENTIALS        = "INVALID_CREDENTIALS"
+	FORBIDDEN                  = "FORBIDDEN"
 )

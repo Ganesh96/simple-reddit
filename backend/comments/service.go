@@ -2,97 +2,128 @@ package comments
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/ganesh96/simple-reddit/backend/common"
-	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var commentCollection *mongo.Collection = configs.GetCollection(configs.DB, "comments")
-
-func CreateComment() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		var comment Comment
-		defer cancel()
-
-		if err := c.BindJSON(&comment); err != nil {
-			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
-			return
-		}
-
-		newComment := Comment{
-			Id:        primitive.NewObjectID(),
-			Text:      comment.Text,
-			PostId:    comment.PostId,
-			CreatedBy: comment.CreatedBy,
-		}
-
-		result, err := commentCollection.InsertOne(ctx, newComment)
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-		common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"comment": result})
+// CreateComment creates a new comment
+func CreateComment(c *gin.Context) {
+	var comment Comment
+	if err := c.ShouldBindJSON(&comment); err != nil {
+		log.Printf("Error binding JSON: %v", err)
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY,
+			gin.H{"error": "Invalid request body"})
+		return
 	}
+
+	comment.ID = primitive.NewObjectID()
+	comment.CreationDate = time.Now()
+	comment.UpdationDate = time.Now()
+	comment.Edited = false
+	comment.UpVotes = 1
+	comment.DownVotes = 0
+
+	_, err := CommentCollection.InsertOne(context.TODO(), comment)
+	if err != nil {
+		log.Printf("Error creating comment: %v", err)
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
+			gin.H{"error": "Failed to create comment"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS,
+		gin.H{"message": "Comment created successfully", "comment": comment})
 }
 
-func GetCommentsForPost() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		postId := c.Param("postid")
-		var comments []Comment
-
-		cursor, err := commentCollection.Find(ctx, bson.M{"postid": postId})
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-		defer cursor.Close(ctx)
-
-		if err = cursor.All(ctx, &comments); err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-
-		if comments == nil {
-			comments = []Comment{}
-		}
-
-		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"comments": comments})
+// GetCommentsByPostId retrieves all comments for a given post
+func GetCommentsByPostId(c *gin.Context) {
+	postID, err := primitive.ObjectIDFromHex(c.Param("postId"))
+	if err != nil {
+		log.Printf("Error converting postId to ObjectID: %v", err)
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
+			gin.H{"error": "Invalid post ID"})
+		return
 	}
+
+	var comments []Comment
+	cursor, err := CommentCollection.Find(context.TODO(), bson.M{"post_id": postID})
+	if err != nil {
+		log.Printf("Error finding comments: %v", err)
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
+			gin.H{"error": "Failed to retrieve comments"})
+		return
+	}
+
+	if err = cursor.All(context.TODO(), &comments); err != nil {
+		log.Printf("Error decoding comments: %v", err)
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
+			gin.H{"error": "Failed to retrieve comments"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"comments": comments})
 }
 
-func DeleteComment() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		commentId := c.Param("id")
-		objId, err := primitive.ObjectIDFromHex(commentId)
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusBadRequest, "Invalid comment ID", gin.H{"error": err.Error()})
-			return
-		}
-
-		result, err := commentCollection.DeleteOne(ctx, bson.M{"_id": objId})
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-
-		if result.DeletedCount < 1 {
-			common.RespondWithJSON(c, http.StatusNotFound, "Comment with specified ID not found!", gin.H{})
-			return
-		}
-
-		c.Status(http.StatusNoContent)
+// UpdateComment updates a comment
+func UpdateComment(c *gin.Context) {
+	commentID, err := primitive.ObjectIDFromHex(c.Param("commentId"))
+	if err != nil {
+		log.Printf("Error converting commentId to ObjectID: %v", err)
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
+			gin.H{"error": "Invalid comment ID"})
+		return
 	}
+
+	var updatedComment Comment
+	if err := c.ShouldBindJSON(&updatedComment); err != nil {
+		log.Printf("Error binding JSON: %v", err)
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY,
+			gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"text":          updatedComment.Text,
+			"updation_date": time.Now(),
+			"edited":        true,
+		},
+	}
+
+	_, err = CommentCollection.UpdateOne(context.TODO(), bson.M{"_id": commentID}, update)
+	if err != nil {
+		log.Printf("Error updating comment: %v", err)
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
+			gin.H{"error": "Failed to update comment"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"message": "Comment updated successfully"})
+}
+
+// DeleteComment deletes a comment
+func DeleteComment(c *gin.Context) {
+	commentID, err := primitive.ObjectIDFromHex(c.Param("commentId"))
+	if err != nil {
+		log.Printf("Error converting commentId to ObjectID: %v", err)
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
+			gin.H{"error": "Invalid comment ID"})
+		return
+	}
+
+	_, err = CommentCollection.DeleteOne(context.TODO(), bson.M{"_id": commentID})
+	if err != nil {
+		log.Printf("Error deleting comment: %v", err)
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
+			gin.H{"error": "Failed to delete comment"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"message": "Comment deleted successfully"})
 }

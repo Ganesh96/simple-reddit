@@ -3,34 +3,43 @@ package profiles
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/ganesh96/simple-reddit/backend/common"
 	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var profileCollection *mongo.Collection = configs.GetCollection(configs.DB, "profiles")
+func UpdateProfile(c *gin.Context) {
+	username := c.Param("username")
 
-func GetProfile() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		username := c.Param("username")
-		var profile Profile
-
-		err := profileCollection.FindOne(ctx, bson.M{"username": username}).Decode(&profile)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				common.RespondWithJSON(c, http.StatusNotFound, common.USER_NOT_FOUND, gin.H{"error": err.Error()})
-				return
-			}
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-		common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"profile": profile})
+	var user common.User
+	userCollection := configs.GetCollection(configs.DB, "users")
+	err := userCollection.FindOne(context.TODO(), bson.M{"username": username}).Decode(&user)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusNotFound, common.USER_NOT_FOUND, gin.H{"error": "User not found"})
+		return
 	}
+
+	var profile Profile
+	if err := c.ShouldBindJSON(&profile); err != nil {
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"display_name": profile.DisplayName,
+			"description":  profile.Description,
+			"avatar_url":   profile.AvatarURL,
+		},
+	}
+
+	_, err = profileCollection.UpdateOne(context.TODO(), bson.M{"user_id": user.ID}, update)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to update profile"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"message": "Profile updated successfully"})
 }

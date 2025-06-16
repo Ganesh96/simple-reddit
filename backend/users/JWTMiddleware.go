@@ -2,7 +2,9 @@ package users
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/ganesh96/simple-reddit/backend/common"
 	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
@@ -13,7 +15,13 @@ func AuthorizeJWT() gin.HandlerFunc {
 		const BEARER_SCHEMA = "Bearer "
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			common.RespondWithJSON(c, http.StatusUnauthorized, "No auth token provided", nil)
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "No authorization header provided"})
+			c.Abort()
+			return
+		}
+
+		if !strings.HasPrefix(authHeader, BEARER_SCHEMA) {
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid authorization header format"})
 			c.Abort()
 			return
 		}
@@ -21,11 +29,18 @@ func AuthorizeJWT() gin.HandlerFunc {
 		tokenString := authHeader[len(BEARER_SCHEMA):]
 		token, err := configs.ValidateToken(tokenString)
 
+		if err != nil {
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
 		if token.Valid {
-			claims := token.Claims.(*configs.JWTClaim)
-			c.Set("username", claims.Username)
+			claims := token.Claims.(jwt.MapClaims)
+			c.Set("username", claims["username"])
+			c.Next()
 		} else {
-			common.RespondWithJSON(c, http.StatusUnauthorized, "Invalid token", gin.H{"error": err.Error()})
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}

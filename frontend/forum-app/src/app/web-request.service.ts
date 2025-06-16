@@ -1,21 +1,20 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { environment } from '../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class WebRequestService {
 
-  readonly ROOT_URL: string;
-  constructor(private http: HttpClient) { 
-    // this.ROOT_URL = 'http://3.145.146.32:27017';
-    // this.ROOT_URL = 'http://3.145.146.32:8080'
-    this.ROOT_URL = 'http://localhost:8080';
-    // this.ROOT_URL = 'http://3.21.236.152:4200';
+  readonly ROOT_URL;
+
+  constructor(private http: HttpClient) {
+    this.ROOT_URL = environment.apiUrl;
   }
 
-  get(uri: string, quertyParams: HttpParams) {
-    return this.http.get(`${this.ROOT_URL}/${uri}`, { params: quertyParams});
+  get(uri: string) {
+    return this.http.get(`${this.ROOT_URL}/${uri}`);
   }
 
   post(uri: string, payload: Object) {
@@ -25,9 +24,16 @@ export class WebRequestService {
   patch(uri: string, payload: Object) {
     return this.http.patch(`${this.ROOT_URL}/${uri}`, payload);
   }
-  
-  // May not work with payload
-  delete(uri: string, payload: Object) {
-    return this.http.delete(`${this.ROOT_URL}/${uri}`, payload);
+
+  delete(uri: string) {
+    return this.http.delete(`${this.ROOT_URL}/${uri}`);
+  }
+
+  login(uri: string, payload: any) {
+    return this.http.post(`${this.ROOT_URL}/${uri}`, payload, { responseType: 'text' });
+  }
+
+  signup(uri: string, payload: any) {
+    return this.http.post(`${this.ROOT_URL}/${uri}`, payload, { responseType: 'text' });
   }
 }

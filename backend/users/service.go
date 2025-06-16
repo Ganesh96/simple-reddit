@@ -3,119 +3,106 @@ package users
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/ganesh96/simple-reddit/backend/common"
 	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
-var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
-
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
-}
-
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
-func CreateUser() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
-		var user User
-
-		if err := c.BindJSON(&user); err != nil {
-			common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
-			return
-		}
-
-		count, err := userCollection.CountDocuments(ctx, bson.M{"username": user.Username})
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-		if count > 0 {
-			common.RespondWithJSON(c, http.StatusConflict, common.USERNAME_ALREADY_EXISTS, gin.H{})
-			return
-		}
-
-		hashedPassword, err := HashPassword(user.Password)
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, "Error hashing password", gin.H{"error": err.Error()})
-			return
-		}
-		user.Password = hashedPassword
-
-		result, err := userCollection.InsertOne(ctx, user)
-		if err != nil {
-			common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
-			return
-		}
-		common.RespondWithJSON(c, http.StatusCreated, common.SUCCESS, gin.H{"user": result})
-	}
-}
-
-func Login(c *gin.Context) {
-	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
-	var user User
-	var foundUser User
-
-	if err := c.BindJSON(&user); err != nil {
+func Signup(c *gin.Context) {
+	var user common.User
+	if err := c.ShouldBindJSON(&user); err != nil {
 		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
 		return
 	}
 
-	err := userCollection.FindOne(ctx, bson.M{"username": user.Username}).Decode(&foundUser)
+	// Check for existing user by email
+	count, err := userCollection.CountDocuments(context.TODO(), bson.M{"email": user.Email})
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{})
-			return
-		}
-		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Error checking for existing email"})
+		return
+	}
+	if count > 0 {
+		common.RespondWithJSON(c, http.StatusConflict, common.EMAIL_ALREADY_EXISTS, gin.H{"error": "User with this email already exists"})
 		return
 	}
 
-	if !CheckPasswordHash(user.Password, foundUser.Password) {
-		common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{})
-		return
-	}
-
-	token, err := configs.CreateToken(foundUser.Username)
+	// Check for existing user by username
+	count, err = userCollection.CountDocuments(context.TODO(), bson.M{"username": user.Username})
 	if err != nil {
-		common.RespondWithJSON(c, http.StatusInternalServerError, "Failed to generate token", gin.H{"error": err.Error()})
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Error checking for existing username"})
+		return
+	}
+	if count > 0 {
+		common.RespondWithJSON(c, http.StatusConflict, common.USERNAME_ALREADY_EXISTS, gin.H{"error": "User with this username already exists"})
 		return
 	}
 
-	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"token": token, "username": foundUser.Username})
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user.Password = string(hashedPassword)
+	user.ID = primitive.NewObjectID()
+
+	_, err = userCollection.InsertOne(context.TODO(), user)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusCreated, common.CREATED, gin.H{"message": "User created successfully"})
+}
+
+func Login(c *gin.Context) {
+	var loginDetails LoginDetails
+	if err := c.ShouldBindJSON(&loginDetails); err != nil {
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_REQUEST_BODY, gin.H{"error": err.Error()})
+		return
+	}
+
+	var foundUser common.User
+	err := userCollection.FindOne(context.TODO(), bson.M{"email": loginDetails.Email}).Decode(&foundUser)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{"error": "Invalid email or password"})
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(loginDetails.Password))
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusUnauthorized, common.INVALID_CREDENTIALS, gin.H{"error": "Invalid email or password"})
+		return
+	}
+
+	token, err := configs.GenerateToken(foundUser.Username)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"token": token})
 }
 
 func DeleteUser(c *gin.Context) {
-	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
-
 	username := c.Param("username")
-	tokenUsername, exists := c.Get("username")
-	if !exists || tokenUsername != username {
-		common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{})
+	authUsername := c.GetString("username")
+
+	if username != authUsername {
+		common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{"error": "You are not authorized to delete this user"})
 		return
 	}
 
-	result, err := userCollection.DeleteOne(ctx, bson.M{"username": username})
+	_, err := userCollection.DeleteOne(context.TODO(), bson.M{"username": username})
 	if err != nil {
-		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": err.Error()})
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to delete user"})
 		return
 	}
-	if result.DeletedCount == 0 {
-		common.RespondWithJSON(c, http.StatusNotFound, common.USER_NOT_FOUND, gin.H{})
-		return
-	}
-	c.Status(http.StatusNoContent)
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"message": "User deleted successfully"})
 }
