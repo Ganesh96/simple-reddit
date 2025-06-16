@@ -57,3 +57,15 @@ func GetAllCommunities(c *gin.Context) {
 
 	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"communities": communities})
 }
+
+func DeleteCommunityByName(c *gin.Context) {
+	communityName := c.Param("communityName")
+
+	_, err := CommunityCollection.DeleteOne(context.TODO(), bson.M{"name": communityName})
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR, gin.H{"error": "Failed to delete community"})
+		return
+	}
+
+	common.RespondWithJSON(c, http.StatusOK, common.SUCCESS, gin.H{"message": "Community deleted successfully"})
+}

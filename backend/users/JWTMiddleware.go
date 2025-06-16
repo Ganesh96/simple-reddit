@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// AuthorizeJWT is a middleware to authorize JWT tokens
 func AuthorizeJWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		const BEARER_SCHEMA = "Bearer "
@@ -27,8 +28,8 @@ func AuthorizeJWT() gin.HandlerFunc {
 		}
 
 		tokenString := authHeader[len(BEARER_SCHEMA):]
-		token, err := configs.ValidateToken(tokenString)
 
+		token, err := configs.ValidateToken(tokenString)
 		if err != nil {
 			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token"})
 			c.Abort()
@@ -37,6 +38,7 @@ func AuthorizeJWT() gin.HandlerFunc {
 
 		if token.Valid {
 			claims := token.Claims.(jwt.MapClaims)
+			// Set username in context for downstream handlers
 			c.Set("username", claims["username"])
 			c.Next()
 		} else {

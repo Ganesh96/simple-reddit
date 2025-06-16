@@ -104,5 +104,8 @@
       }
     }
   },
-  "defaultProject": "forum-app"
+  "defaultProject": "forum-app",
+  "cli": {
+    "analytics": false
+  }
 }

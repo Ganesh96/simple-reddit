@@ -3,16 +3,13 @@ package posts
 import (
 	"time"
 
+	"github.com/ganesh96/simple-reddit/backend/configs"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-    "github.com/ganesh96/simple-reddit/backend/configs"
 )
 
-// PostCollection is the collection for posts
-var PostCollection *mongo.Collection = configs.GetCollection(configs.DB, "posts")
-
-// SavedCollection is the collection for saved posts/comments
-var SavedCollection *mongo.Collection = configs.GetCollection(configs.DB, "saved")
+var PostCollection *mongo.Collection = configs.GetCollection("posts")
+var SavedCollection *mongo.Collection = configs.GetCollection("saved")
 
 // Post struct with all fields
 type Post struct {

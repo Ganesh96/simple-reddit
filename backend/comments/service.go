@@ -1,7 +1,6 @@
 package comments
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
@@ -22,14 +21,22 @@ func CreateComment(c *gin.Context) {
 		return
 	}
 
+	postID, err := primitive.ObjectIDFromHex(c.Param("postId"))
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM, gin.H{"error": "Invalid post ID"})
+		return
+	}
+
 	comment.ID = primitive.NewObjectID()
+	comment.PostID = postID
 	comment.CreationDate = time.Now()
 	comment.UpdationDate = time.Now()
 	comment.Edited = false
 	comment.UpVotes = 1
 	comment.DownVotes = 0
+	comment.Username = c.GetString("username") // Get username from JWT
 
-	_, err := CommentCollection.InsertOne(context.TODO(), comment)
+	_, err = CommentsCollection.InsertOne(c.Request.Context(), comment)
 	if err != nil {
 		log.Printf("Error creating comment: %v", err)
 		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
@@ -45,14 +52,13 @@ func CreateComment(c *gin.Context) {
 func GetCommentsByPostId(c *gin.Context) {
 	postID, err := primitive.ObjectIDFromHex(c.Param("postId"))
 	if err != nil {
-		log.Printf("Error converting postId to ObjectID: %v", err)
 		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
 			gin.H{"error": "Invalid post ID"})
 		return
 	}
 
 	var comments []Comment
-	cursor, err := CommentCollection.Find(context.TODO(), bson.M{"post_id": postID})
+	cursor, err := CommentsCollection.Find(c.Request.Context(), bson.M{"post_id": postID})
 	if err != nil {
 		log.Printf("Error finding comments: %v", err)
 		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
@@ -60,7 +66,7 @@ func GetCommentsByPostId(c *gin.Context) {
 		return
 	}
 
-	if err = cursor.All(context.TODO(), &comments); err != nil {
+	if err = cursor.All(c.Request.Context(), &comments); err != nil {
 		log.Printf("Error decoding comments: %v", err)
 		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
 			gin.H{"error": "Failed to retrieve comments"})
@@ -74,7 +80,6 @@ func GetCommentsByPostId(c *gin.Context) {
 func UpdateComment(c *gin.Context) {
 	commentID, err := primitive.ObjectIDFromHex(c.Param("commentId"))
 	if err != nil {
-		log.Printf("Error converting commentId to ObjectID: %v", err)
 		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
 			gin.H{"error": "Invalid comment ID"})
 		return
@@ -88,6 +93,20 @@ func UpdateComment(c *gin.Context) {
 		return
 	}
 
+	// Check if the user is the author of the comment
+	var existingComment Comment
+	err = CommentsCollection.FindOne(c.Request.Context(), bson.M{"_id": commentID}).Decode(&existingComment)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusNotFound, common.COMMENT_NOT_FOUND, gin.H{"error": "Comment not found"})
+		return
+	}
+
+	authUsername := c.GetString("username")
+	if existingComment.Username != authUsername {
+		common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{"error": "You are not authorized to update this comment"})
+		return
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"text":          updatedComment.Text,
@@ -96,7 +115,7 @@ func UpdateComment(c *gin.Context) {
 		},
 	}
 
-	_, err = CommentCollection.UpdateOne(context.TODO(), bson.M{"_id": commentID}, update)
+	_, err = CommentsCollection.UpdateOne(c.Request.Context(), bson.M{"_id": commentID}, update)
 	if err != nil {
 		log.Printf("Error updating comment: %v", err)
 		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,
@@ -111,13 +130,25 @@ func UpdateComment(c *gin.Context) {
 func DeleteComment(c *gin.Context) {
 	commentID, err := primitive.ObjectIDFromHex(c.Param("commentId"))
 	if err != nil {
-		log.Printf("Error converting commentId to ObjectID: %v", err)
 		common.RespondWithJSON(c, http.StatusBadRequest, common.INVALID_PARAM,
 			gin.H{"error": "Invalid comment ID"})
 		return
 	}
 
-	_, err = CommentCollection.DeleteOne(context.TODO(), bson.M{"_id": commentID})
+	var commentToDelete Comment
+	err = CommentsCollection.FindOne(c.Request.Context(), bson.M{"_id": commentID}).Decode(&commentToDelete)
+	if err != nil {
+		common.RespondWithJSON(c, http.StatusNotFound, common.COMMENT_NOT_FOUND, gin.H{"error": "Comment not found"})
+		return
+	}
+
+	authUsername := c.GetString("username")
+	if commentToDelete.Username != authUsername {
+		common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{"error": "You are not authorized to delete this comment"})
+		return
+	}
+
+	_, err = CommentsCollection.DeleteOne(c.Request.Context(), bson.M{"_id": commentID})
 	if err != nil {
 		log.Printf("Error deleting comment: %v", err)
 		common.RespondWithJSON(c, http.StatusInternalServerError, common.MONGO_DB_ERROR,

@@ -3,18 +3,15 @@ package comments
 import (
 	"time"
 
+	"github.com/ganesh96/simple-reddit/backend/configs"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-    "github.com/ganesh96/simple-reddit/backend/configs"
 )
 
-// CommentCollection is the collection for comments
-var CommentCollection *mongo.Collection = configs.GetCollection(configs.DB, "comments")
+var CommentsCollection *mongo.Collection = configs.GetCollection("comments")
+var CommentsVotingHistoryCollection *mongo.Collection = configs.GetCollection("comments_voting_history")
 
-// CommentsVotingHistoryCollection is the collection for comment voting history
-var CommentsVotingHistoryCollection *mongo.Collection = configs.GetCollection(configs.DB, "comments_voting_history")
-
-// Comment struct represents a comment in the database
+// Comment struct
 type Comment struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"`
 	PostID       primitive.ObjectID `bson:"post_id,omitempty"`
@@ -34,4 +31,3 @@ type VotingHistory struct {
 	Username  string             `bson:"username,omitempty"`
 	Vote      int                `bson:"vote,omitempty"`
 }
-

@@ -9,31 +9,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(router *gin.Engine) {
-	// Public routes
+func SetupRoutes(router *gin.Engine) {
+	// User routes
+	router.POST("/signup", users.Signup)
 	router.POST("/login", users.Login)
-	router.POST("/user", users.CreateUser)
-	router.GET("/posts", posts.GetAllPosts)
-	router.GET("/post/:id", posts.GetPostById)
+	router.DELETE("/users/:username", users.AuthorizeJWT(), users.DeleteUser)
+
+	// Profile routes
+	router.GET("/profiles/:username", profiles.GetProfileByUsername)
+	router.PUT("/profiles/:username", users.AuthorizeJWT(), profiles.UpdateProfile)
+
+	// Community routes
+	router.POST("/communities", users.AuthorizeJWT(), communities.CreateCommunity)
 	router.GET("/communities", communities.GetAllCommunities)
-	router.GET("/community/:name", communities.GetCommunityByName)
-	router.GET("/comments/post/:postid", comments.GetCommentsForPost())
+	router.DELETE("/communities/:communityName", users.AuthorizeJWT(), communities.DeleteCommunityByName)
 
-	// Authenticated routes
-	authorized := router.Group("/")
-	authorized.Use(users.AuthorizeJWT())
-	{
-		authorized.POST("/post", posts.CreatePost)
-		authorized.PATCH("/post/:id", posts.UpdatePost)
-		authorized.DELETE("/post/:id", posts.DeletePost)
+	// Post routes
+	router.POST("/posts", users.AuthorizeJWT(), posts.CreatePost)
+	router.GET("/posts", posts.GetAllPosts)
+	router.GET("/posts/:postId", posts.GetPostById)
+	router.PUT("/posts/:postId", users.AuthorizeJWT(), posts.UpdatePost)
+	router.DELETE("/posts/:postId", users.AuthorizeJWT(), posts.DeletePost)
 
-		authorized.POST("/community", communities.CreateCommunity)
-		authorized.DELETE("/community/:name", communities.DeleteCommunity)
-
-		authorized.GET("/profile/:username", profiles.GetProfile())
-		authorized.DELETE("/user/:username", users.DeleteUser)
-
-		authorized.POST("/comment", comments.CreateComment())
-		authorized.DELETE("/comment/:id", comments.DeleteComment())
-	}
+	// Comment routes
+	router.POST("/posts/:postId/comments", users.AuthorizeJWT(), comments.CreateComment)
+	router.GET("/posts/:postId/comments", comments.GetCommentsByPostId)
+	router.PUT("/comments/:commentId", users.AuthorizeJWT(), comments.UpdateComment)
+	router.DELETE("/comments/:commentId", users.AuthorizeJWT(), comments.DeleteComment)
 }

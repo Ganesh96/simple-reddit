@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+
 	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/ganesh96/simple-reddit/backend/routes"
 	"github.com/gin-contrib/cors"
@@ -10,18 +12,20 @@ import (
 func main() {
 	router := gin.Default()
 
-	// Configure CORS
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:4200"}
-	config.AllowMethods = []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	router.Use(cors.New(config))
+	// Set up CORS middleware
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:4200"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
 
-	// Connect to the database
+	//Run the database
 	configs.ConnectDB()
 
-	// Setup routes
-	routes.SetupRouter(router)
+	//Setup routes
+	routes.SetupRoutes(router)
 
-	router.Run("localhost:8080")
+	log.Fatal(router.Run(":8080"))
 }
