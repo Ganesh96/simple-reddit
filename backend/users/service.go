@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// userCollection is a package-level variable to interact with the "users" collection in MongoDB.
 var userCollection *mongo.Collection = configs.GetCollection(configs.DB, "users")
 
 // HashPassword hashes a password using bcrypt.
@@ -101,7 +100,7 @@ func Login() gin.HandlerFunc {
 		}
 
 		// Generate JWT token
-		token, err := GenerateJWT(foundUser.Username)
+		token, err := configs.GenerateJWT(foundUser.Username)
 		if err != nil {
 			common.RespondWithJSON(c, http.StatusInternalServerError, "Failed to generate token", gin.H{"error": err.Error()})
 			return
@@ -119,8 +118,7 @@ func DeleteUser() gin.HandlerFunc {
 
 		username := c.Param("username")
 
-		// It's good practice to verify ownership before deletion.
-		// The JWT middleware should add user info to the context.
+		// Verify ownership before deletion.
 		tokenUsername, exists := c.Get("username")
 		if !exists || tokenUsername != username {
 			common.RespondWithJSON(c, http.StatusForbidden, common.FORBIDDEN, gin.H{})
