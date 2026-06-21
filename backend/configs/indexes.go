@@ -16,7 +16,6 @@ func EnsureIndexes() {
 
 	indexes := map[string][]mongo.IndexModel{
 		"posts": {
-			{Keys: bson.D{{Key: "_id", Value: -1}}},
 			{Keys: bson.D{{Key: "community", Value: 1}, {Key: "_id", Value: -1}}},
 			{Keys: bson.D{{Key: "username", Value: 1}, {Key: "_id", Value: -1}}},
 		},
