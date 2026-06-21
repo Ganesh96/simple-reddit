@@ -45,7 +45,7 @@ func ParsePageRequest(c *gin.Context) (PageRequest, error) {
 	return page, nil
 }
 
-func NextCursor[T interface{ GetID() primitive.ObjectID }](items []T, limit int64) gin.H {
+func ApplyCursorPage[T interface{ GetID() primitive.ObjectID }](items []T, limit int64) ([]T, gin.H) {
 	hasMore := int64(len(items)) > limit
 	if hasMore {
 		items = items[:limit]
@@ -56,7 +56,7 @@ func NextCursor[T interface{ GetID() primitive.ObjectID }](items []T, limit int6
 		nextCursor = items[len(items)-1].GetID().Hex()
 	}
 
-	return gin.H{
+	return items, gin.H{
 		"limit":       limit,
 		"has_more":    hasMore,
 		"next_cursor": nextCursor,
