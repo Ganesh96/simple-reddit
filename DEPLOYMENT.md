@@ -1,28 +1,45 @@
 # Deployment
 
-This project should be deployed as two services plus one managed database:
+This project should be deployed as two services plus managed serverless data stores:
 
 1. Angular frontend: Cloudflare Pages or Vercel static hosting
 2. Go backend: Vercel Go Runtime, Railway, Render, Fly.io, or another Go-capable host
-3. MongoDB: MongoDB Atlas
+3. Primary database target: serverless Postgres, preferably Neon
+4. Optional hot-path layer: Upstash Redis
 
-## Recommended MVP deployment
+> Current code still uses MongoDB. See `docs/database-decision.md` for the migration target and schema. Do not treat MongoDB Atlas as the desired long-term production database.
 
-Use this path first because it has the least infrastructure overhead:
+## Recommended production target
+
+Use this path because it avoids always-on database infrastructure while keeping the data model relational:
 
 - Frontend: Cloudflare Pages
-- Backend: Vercel Go Runtime or Render/Railway
-- Database: MongoDB Atlas
+- Backend: Render/Railway/Fly.io first; Vercel is possible with repo layout adjustment
+- Primary DB: Neon Postgres
+- Optional cache/rate-limit store: Upstash Redis
 
 ## Required environment variables
 
-### Backend
+### Backend today, before DB migration
 
 ```bash
-MONGOURI=mongodb+srv://<user>:<password>@<cluster>/<database>?retryWrites=true&w=majority
+MONGOURI=mongodb://localhost:27017
 SECRET_KEY=<long-random-secret>
 ALLOWED_ORIGINS=https://<frontend-domain>
 PORT=<set-by-host>
+```
+
+### Backend after Postgres migration
+
+```bash
+DATABASE_URL=postgres://<user>:<password>@<host>/<database>?sslmode=require
+SECRET_KEY=<long-random-secret>
+ALLOWED_ORIGINS=https://<frontend-domain>
+PORT=<set-by-host>
+
+# optional
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
 ```
 
 `PORT` is usually injected by the hosting provider. Set it manually only for local development.
@@ -45,7 +62,7 @@ go mod download
 go run main.go
 ```
 
-Optional local `.env`:
+Optional local `.env` today:
 
 ```bash
 MONGOURI=mongodb://localhost:27017
@@ -53,6 +70,8 @@ SECRET_KEY=dev-only-secret
 ALLOWED_ORIGINS=http://localhost:4200
 PORT=8080
 ```
+
+After the Postgres migration, replace `MONGOURI` with `DATABASE_URL`.
 
 ## Frontend local execution
 
@@ -96,20 +115,34 @@ These are simpler for a long-running Go API because the existing `backend/main.g
 - root directory: `backend`
 - build command: `go build -o app .`
 - start command: `./app`
-- environment variables: `MONGOURI`, `SECRET_KEY`, `ALLOWED_ORIGINS`
+- environment variables today: `MONGOURI`, `SECRET_KEY`, `ALLOWED_ORIGINS`
+- environment variables after migration: `DATABASE_URL`, `SECRET_KEY`, `ALLOWED_ORIGINS`
 
-## MongoDB Atlas setup
+## Serverless Postgres setup
 
-1. Create an Atlas cluster.
-2. Create a database user with only the permissions needed by this app.
-3. Restrict network access to the backend host where possible.
-4. Copy the Go connection string into `MONGOURI`.
-5. Start the backend once so `EnsureIndexes()` creates required indexes.
+1. Create a Neon Postgres project.
+2. Create a role/user with only the permissions needed by this app.
+3. Copy the pooled connection string into `DATABASE_URL`.
+4. Run migrations.
+5. Smoke test signup, login, create post, list posts, create comment, vote.
+
+## Upstash Redis setup, optional
+
+Use Upstash Redis for data that can be rebuilt or expired:
+
+- rate limits
+- feed cache
+- hot counters cache
+- session denylist
+- short-lived queues
+
+Do not store canonical users/posts/comments only in Redis unless the project intentionally accepts weaker queryability and more application-level consistency work.
 
 ## Production checklist
 
 - [ ] Merge backend pagination/security/votes PR.
-- [ ] Create MongoDB Atlas cluster.
+- [ ] Complete Postgres migration from `docs/database-decision.md`.
+- [ ] Create Neon Postgres project.
 - [ ] Set backend environment variables.
 - [ ] Deploy backend.
 - [ ] Configure frontend API base URL.
