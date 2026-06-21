@@ -9,25 +9,28 @@ import (
 )
 
 var CommentsCollection *mongo.Collection = configs.GetCollection("comments")
-var CommentsVotingHistoryCollection *mongo.Collection = configs.GetCollection("comments_voting_history")
 
-// Comment struct
+// Comment stores the discussion item plus denormalized vote counters needed for reads.
 type Comment struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	PostID       primitive.ObjectID `bson:"post_id,omitempty"`
-	Text         string             `bson:"text,omitempty"`
-	CreationDate time.Time          `bson:"creation_date,omitempty"`
-	UpdationDate time.Time          `bson:"updation_date,omitempty"`
-	UpVotes      int                `bson:"up_votes,omitempty"`
-	DownVotes    int                `bson:"down_votes,omitempty"`
-	Username     string             `bson:"username,omitempty"`
-	Edited       bool               `bson:"edited,omitempty"`
+	ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	PostID       primitive.ObjectID `json:"post_id" bson:"post_id,omitempty"`
+	Text         string             `json:"text" bson:"text,omitempty"`
+	CreationDate time.Time          `json:"creation_date" bson:"creation_date,omitempty"`
+	UpdationDate time.Time          `json:"updation_date" bson:"updation_date,omitempty"`
+	UpVotes      int                `json:"up_votes" bson:"up_votes"`
+	DownVotes    int                `json:"down_votes" bson:"down_votes"`
+	Username     string             `json:"username" bson:"username,omitempty"`
+	Edited       bool               `json:"edited" bson:"edited"`
 }
 
-// VotingHistory represents a user's voting history for a comment
-type VotingHistory struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	CommentID primitive.ObjectID `bson:"comment_id,omitempty"`
-	Username  string             `bson:"username,omitempty"`
-	Vote      int                `bson:"vote,omitempty"`
+func (c Comment) GetID() primitive.ObjectID {
+	return c.ID
+}
+
+type CreateCommentRequest struct {
+	Text string `json:"text" binding:"required,min=1,max=10000"`
+}
+
+type UpdateCommentRequest struct {
+	Text string `json:"text" binding:"required,min=1,max=10000"`
 }
