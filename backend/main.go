@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ganesh96/simple-reddit/backend/configs"
@@ -17,9 +19,8 @@ func main() {
 	router.Use(middleware.BodySizeLimit(1 << 20))
 	router.Use(middleware.RateLimit(120, time.Minute))
 
-	// Set up CORS middleware
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:4200"},
+		AllowOrigins:     allowedOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -31,5 +32,25 @@ func main() {
 
 	routes.SetupRoutes(router)
 
-	log.Fatal(router.Run(":8080"))
+	log.Fatal(router.Run(":" + port()))
+}
+
+func port() string {
+	if value := os.Getenv("PORT"); value != "" {
+		return value
+	}
+	return "8080"
+}
+
+func allowedOrigins() []string {
+	value := os.Getenv("ALLOWED_ORIGINS")
+	if value == "" {
+		return []string{"http://localhost:4200"}
+	}
+
+	origins := strings.Split(value, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
+	return origins
 }
