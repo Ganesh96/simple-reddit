@@ -1,36 +1,50 @@
-# ForumApp
+# Simple Reddit Web
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 13.1.2.
+The frontend has been migrated from Angular to React with Vite.
 
-## Development server
+## Stack
 
+- React
+- TypeScript
+- Vite
+- React Router
+- Native `fetch` API client
 
-Make sure you are in the front/forum-app file directory.
+## Local development
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
+```bash
+cd frontend/forum-app
+npm install
+npm start
+```
 
-## Code scaffolding
+The development server runs on `http://localhost:4200`.
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+## API configuration
+
+By default, the frontend calls the backend at `http://localhost:8080`.
+
+For deployed environments, set:
+
+```bash
+VITE_API_BASE_URL=https://<backend-domain>
+```
 
 ## Build
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+```bash
+npm run build
+```
 
-## Running unit tests
+The production build outputs to `dist/`.
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+## Notes
 
-## Running end-to-end tests
+The React migration intentionally prioritizes the highest-value read paths first:
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+- feed
+- communities
+- post detail
+- comments
 
-## Running Cypress tests
-Run `npx cypress open` in bash to open cypress
-Locate the simple-reddit-frontend-testing.js in Test Runner.
-
-Run the test, visuals will display on the right. Cypress allows developers to view each test frame by frame as well as snapshots of the test in process.
-
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+Auth/write flows are separated behind the backend's existing secured endpoints and should be completed in the next focused frontend PR.
