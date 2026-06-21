@@ -6,6 +6,7 @@ import (
 	"github.com/ganesh96/simple-reddit/backend/posts"
 	"github.com/ganesh96/simple-reddit/backend/profiles"
 	"github.com/ganesh96/simple-reddit/backend/users"
+	"github.com/ganesh96/simple-reddit/backend/votes"
 	"github.com/gin-gonic/gin"
 )
 
@@ -30,10 +31,14 @@ func SetupRoutes(router *gin.Engine) {
 	router.GET("/posts/:postId", posts.GetPostById)
 	router.PUT("/posts/:postId", users.AuthorizeJWT(), posts.UpdatePost)
 	router.DELETE("/posts/:postId", users.AuthorizeJWT(), posts.DeletePost)
+	router.POST("/posts/:postId/vote", users.AuthorizeJWT(), votes.VotePost)
+	router.DELETE("/posts/:postId/vote", users.AuthorizeJWT(), votes.DeletePostVote)
 
 	// Comment routes
 	router.POST("/posts/:postId/comments", users.AuthorizeJWT(), comments.CreateComment)
 	router.GET("/posts/:postId/comments", comments.GetCommentsByPostId)
 	router.PUT("/comments/:commentId", users.AuthorizeJWT(), comments.UpdateComment)
 	router.DELETE("/comments/:commentId", users.AuthorizeJWT(), comments.DeleteComment)
+	router.POST("/comments/:commentId/vote", users.AuthorizeJWT(), votes.VoteComment)
+	router.DELETE("/comments/:commentId/vote", users.AuthorizeJWT(), votes.DeleteCommentVote)
 }

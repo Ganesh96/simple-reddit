@@ -4,16 +4,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/ganesh96/simple-reddit/backend/common"
 	"github.com/ganesh96/simple-reddit/backend/configs"
 	"github.com/gin-gonic/gin"
 )
 
-// AuthorizeJWT is a middleware to authorize JWT tokens
+// AuthorizeJWT is a middleware to authorize JWT tokens.
 func AuthorizeJWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		const BEARER_SCHEMA = "Bearer "
+		const bearerSchema = "Bearer "
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "No authorization header provided"})
@@ -21,30 +20,27 @@ func AuthorizeJWT() gin.HandlerFunc {
 			return
 		}
 
-		if !strings.HasPrefix(authHeader, BEARER_SCHEMA) {
+		if !strings.HasPrefix(authHeader, bearerSchema) {
 			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid authorization header format"})
 			c.Abort()
 			return
 		}
 
-		tokenString := authHeader[len(BEARER_SCHEMA):]
-
-		token, err := configs.ValidateToken(tokenString)
-		if err != nil {
+		token, err := configs.ValidateToken(authHeader[len(bearerSchema):])
+		if err != nil || !token.Valid {
 			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
 
-		if token.Valid {
-			claims := token.Claims.(jwt.MapClaims)
-			// Set username in context for downstream handlers
-			c.Set("username", claims["username"])
-			c.Next()
-		} else {
-			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token"})
+		claims, ok := token.Claims.(*configs.JWTClaim)
+		if !ok || claims.Username == "" {
+			common.RespondWithJSON(c, http.StatusUnauthorized, common.UNAUTHORIZED, gin.H{"error": "Invalid token claims"})
 			c.Abort()
 			return
 		}
+
+		c.Set("username", claims.Username)
+		c.Next()
 	}
 }
